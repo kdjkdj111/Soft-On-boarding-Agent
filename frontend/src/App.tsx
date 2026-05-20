@@ -20,6 +20,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ProtectedTeamRoute({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((state) => state.user);
+  
+  if (!user?.teamCode) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -40,7 +50,9 @@ function App() {
           path="/" 
           element={
             <ProtectedRoute>
-              <MainLayout />
+              <ProtectedTeamRoute>
+                <MainLayout />
+              </ProtectedTeamRoute>
             </ProtectedRoute>
           }
         >

@@ -12,6 +12,7 @@ import 'reactflow/dist/style.css';
 import { useQuery } from '@tanstack/react-query';
 import { functionalViewApi, type FunctionalNodeData } from '../services/functionalViewApi';
 import { userApi } from '../services/userApi';
+import { mockFunctionalViewData } from '../mocks/functionalViewMock';
 
 import { ForestNode } from '../components/diagram/ForestNode';
 import { TreeNode } from '../components/diagram/TreeNode';
@@ -36,19 +37,29 @@ export default function FunctionalView() {
   const [selectedNode, setSelectedNode] = useState<Node<FunctionalNodeData> | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
+  // ─── 🚧 Mock 테스트 모드 ───────────────────────────────────────────
+  // 실제 연동 시 아래 두 줄을 제거하고 주석 처리된 코드를 살려주세요.
+  const MOCK_MODE = true;
+  const MOCK_SPACE_ID = 999;
+  // ─────────────────────────────────────────────────────────────────
+
   // 1. User Profile 조회하여 spaceId 획득
   const { data: profile, isLoading: isProfileLoading } = useQuery({
     queryKey: ['userProfile'],
     queryFn: userApi.getProfile,
+    enabled: !MOCK_MODE, // Mock 모드에서는 API 호출 안 함
   });
 
-  const spaceId = profile?.teamInfo?.spaceId;
+  const spaceId = MOCK_MODE ? MOCK_SPACE_ID : (profile?.teamInfo?.spaceId ?? null);
 
   // 2. spaceId로 Functional View 데이터 조회
   const { data: apiData, isLoading: isApiLoading, error } = useQuery({
     queryKey: ['functionalView', spaceId],
-    queryFn: () => functionalViewApi.getFunctionalView(spaceId!),
-    enabled: !!spaceId, // spaceId가 있을 때만 호출
+    queryFn: async () => {
+      if (MOCK_MODE) return mockFunctionalViewData; // 🚧 Mock 데이터 반환
+      return functionalViewApi.getFunctionalView(spaceId!); // 실제 연동 시 활성화
+    },
+    enabled: !!spaceId,
   });
 
   // 3. 데이터 변환 및 Expand/Collapse 토글 함수 생성
@@ -121,7 +132,7 @@ export default function FunctionalView() {
     setIsDrawerOpen(true);
   }, []);
 
-  if (isProfileLoading || (spaceId && isApiLoading)) {
+  if (!MOCK_MODE && (isProfileLoading || (spaceId && isApiLoading))) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-slate-50">
         <div className="animate-pulse flex flex-col items-center">

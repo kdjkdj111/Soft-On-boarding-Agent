@@ -1,104 +1,106 @@
 import os
+import sys
 from dotenv import load_dotenv
 from pathlib import Path
 from supabase import create_client, Client
 from github_analyzer import analyze_single_repository, fetch_recent_commits
+from urllib.parse import urlparse
+
+def parse_repo_info(repo_url):
+    """GitHub URL에서 username과 repo_name을 추출합니다."""
+    path = urlparse(repo_url).path.strip('/')
+    parts = path.split('/')
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return None, None
 
 def main():
-    print("🚀 Soft On-boarding Agent [데이터 추출 검증 파이프라인] 시작\n")
+    # 1. 인자 확인
+    if len(sys.argv) < 2:
+        print("❌ 사용법: python SOA_LLM_Model.py <github_url>")
+        return
     
+    TARGET_URL = sys.argv[1]
+    USERNAME, REPO_NAME = parse_repo_info(TARGET_URL)
+    
+    if not USERNAME or not REPO_NAME:
+        print("❌ 오류: 유효한 GitHub URL이 아닙니다.")
+        return
+
+    print(f"🚀 Soft On-boarding Agent [DB 데이터 적재 파이프라인] 시작")
+    print(f"👉 대상 레포지토리: {USERNAME}/{REPO_NAME}\n")
+    
+    # 2. 환경변수 로드
     env_path = Path(__file__).parent / ".env"
     load_dotenv(dotenv_path=env_path)
     
-    USERNAME = os.getenv("GITHUB_USERNAME")
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
     SUPABASE_URL = os.getenv("SUPABASE_URL") 
     SUPABASE_KEY = os.getenv("SUPABASE_KEY") 
-    TARGET_REPO = os.getenv("TARGET_REPO", "TOP250movie_douban") 
 
-    if not USERNAME or not GITHUB_TOKEN:
+    if not GITHUB_TOKEN or not SUPABASE_URL or not SUPABASE_KEY:
         print("❌ 오류: .env 파일 설정을 확인해주세요.")
         return
 
+    # 3. Supabase 클라이언트 초기화
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-    print(f"🔍 [로직 A] '{TARGET_REPO}' 구조 추출 중...")
-    categorized_files = analyze_single_repository(USERNAME, GITHUB_TOKEN, TARGET_REPO)
-    print("✅ [로직 A 완료] 4개 카테고리 추출 완료!\n")
-
-    print(f"🔍 [로직 B] '{TARGET_REPO}' 최신 커밋 추출 중...")
-    recent_commits = fetch_recent_commits(USERNAME, GITHUB_TOKEN, TARGET_REPO, limit=100)
-    print("✅ [로직 B 완료] 100개의 커밋 히스토리 로드 완료!\n") # limit을 꽉 채웠으므로 100개로 고정 출력
     
-    print("☁️ 수파베이스 스토리지에 데이터 매핑 파일 5개 업로드를 시작합니다...\n")
-
-    # [1] 로직 A (4개 파일)
-    categories = ["Interface", "Functional", "Data", "Process"]
-    for cat in categories:
-        files_list = categorized_files.get(cat, [])
-        file_name = f"{TARGET_REPO}_LogicA_{cat}_DB_Mock.md"
-        
-        content = f"# 📂 {TARGET_REPO} - {cat} View 컴포넌트 목록 (DB 저장용 데이터)\n\n"
-        if not files_list:
-            content += "- 매핑된 파일이 없습니다.\n"
-        else:
-            for f_path in files_list:
-                content += f"- `{f_path}`\n"
-                
-        # 🔥 필살기 적용: utf-8 대신 utf-8-sig 를 사용해 파일에 UTF-8 도장을 강제로 찍습니다.
-        with open(file_name, "w", encoding="utf-8-sig") as f:
-            f.write(content)
+    # 4. 분석 및 적재
+    print(f"🔍 [로직 A] '{REPO_NAME}' 구조 분석 중...")
+    categorized_files = analyze_single_repository(USERNAME, GITHUB_TOKEN, REPO_NAME)
+    
+    components_data = []
+    for category, files in categorized_files.items():
+        for file_path in files:
+            components_data.append({
+                "repo_name": REPO_NAME,
+                "category": category,
+                "file_path": file_path
+            })
             
+    if components_data:
         try:
-            supabase.storage.from_("onboarding-guides").upload(
-                file=open(file_name, "rb"), 
-                path=file_name, 
-                file_options={"content-type": "text/markdown; charset=utf-8", "upsert": "true"}
-            )
-            public_url = supabase.storage.from_("onboarding-guides").get_public_url(file_name)
-            print(f"  ✅ [로직 A] {file_name} 업로드 완료!")
-            print(f"     🔗 공유 링크: {public_url}\n")
+            supabase.table("ComponentNodes").insert(components_data).execute()
+            print(f"  ✅ [로직 A] ComponentNodes 적재 완료!")
         except Exception as e:
-            print(f"  ❌ [로직 A] {file_name} 업로드 실패: {e}\n")
-        finally:
-            if os.path.exists(file_name):
-                os.remove(file_name)
+            print(f"  ❌ [로직 A] 적재 실패: {e}")
 
-    # [2] 로직 B (1개 파일)
-    commit_file_name = f"{TARGET_REPO}_LogicB_CommitHistory_DB_Mock.md"
-    commit_content = f"# 🕒 {TARGET_REPO} - 최신 커밋 히스토리 100개 (DB 저장용 데이터)\n\n"
+    print(f"🔍 [로직 B] '{REPO_NAME}' 커밋 분석 중...")
+    recent_commits = fetch_recent_commits(USERNAME, GITHUB_TOKEN, REPO_NAME, limit=100)
     
-    if not recent_commits:
-        commit_content += "- 커밋 내역이 없습니다.\n"
-    else:
+    commits_data = []
+    if recent_commits:
         for commit_data in recent_commits:
-            sha = commit_data.get('sha', '')[:7] 
+            sha = commit_data.get('sha', '')[:7]
             info = commit_data.get('commit', {})
-            msg = info.get('message', '').split('\n')[0] 
-            date = info.get('author', {}).get('date', '')[:10] 
+            msg = info.get('message', '').split('\n')[0]
+            date = info.get('author', {}).get('date', '')[:10]
             author = info.get('author', {}).get('name', '')
-            commit_content += f"- **[{date}]** `{sha}` : {msg} (by {author})\n"
+            commits_data.append({
+                "repo_name": REPO_NAME,
+                "commit_sha": sha,
+                "message": msg,
+                "commit_date": date,
+                "author": author
+            })
 
-    # 🔥 여기도 필살기 적용!
-    with open(commit_file_name, "w", encoding="utf-8-sig") as f:
-        f.write(commit_content)
-        
+    if commits_data:
+        try:
+            supabase.table("CommitHistory").insert(commits_data).execute()
+            print(f"  ✅ [로직 B] CommitHistory 적재 완료!")
+        except Exception as e:
+            print(f"  ❌ [로직 B] 적재 실패: {e}")
+
+    # ==========================================
+    # 5. [필수 확인] DB 데이터 검증 로직
+    # ==========================================
+    print("\n🔍 [데이터 검증] Supabase에 데이터가 진짜로 들어갔는지 확인합니다...")
     try:
-        supabase.storage.from_("onboarding-guides").upload(
-            file=open(commit_file_name, "rb"), 
-            path=commit_file_name, 
-            file_options={"content-type": "text/markdown; charset=utf-8", "upsert": "true"}
-        )
-        public_url = supabase.storage.from_("onboarding-guides").get_public_url(commit_file_name)
-        print(f"  ✅ [로직 B] {commit_file_name} 업로드 완료!")
-        print(f"     🔗 공유 링크: {public_url}\n")
+        response = supabase.table("ComponentNodes").select("*", count='exact').limit(1).execute()
+        print(f"✅ 데이터 확인 성공! 현재 ComponentNodes 테이블의 총 데이터 개수: {len(response.data) if response.data else '0개 (또는 조회 불가)'}")
+        print(f"💡 만약 여기서 개수가 나오는데 웹에서 안 보인다면, 웹 프로젝트 주소를 다시 확인하세요!")
     except Exception as e:
-        print(f"  ❌ [로직 B] {commit_file_name} 업로드 실패: {e}\n")
-    finally:
-        if os.path.exists(commit_file_name):
-            os.remove(commit_file_name)
-
-    print("🎉 총 5개의 데이터 파일 업로드 및 링크 추출이 완료되었습니다!")
+        print(f"❌ 데이터 조회 실패: {e} (테이블 이름이나 권한을 확인하세요)")
 
 if __name__ == "__main__":
     main()

@@ -1,20 +1,5 @@
 import requests
-
-CATEGORY_RULES = {
-    "Interface": [".jsx", ".tsx", ".html", ".css", ".vue", "controller", "view", "router", "api"],
-    "Functional": [".py", ".java", ".go", "service", "util", "core", "logic", "handler"],
-    "Data": [".sql", "models", "entity", "dto", "repository", "spark", "airflow", "etl", ".ipynb"],
-    "Process": [".md", ".yml", ".yaml", "docker", "pom.xml", "build.gradle", "config", "docs/"]
-}
-
-def categorize_file(path):
-    path_lower = path.lower()
-    for category, keywords in CATEGORY_RULES.items():
-        if any(kw in path_lower for kw in keywords):
-            return category
-    if path_lower.endswith(('.js', '.ts', '.py', '.java', '.cpp', '.c')):
-        return "Functional"
-    return "Process"
+from llm_engine import categorize_files_with_gemini
 
 def analyze_single_repository(username, token, repo_name):
     """
@@ -51,12 +36,15 @@ def analyze_single_repository(username, token, repo_name):
         return categorized_files
         
     tree = response.json().get('tree', [])
-    for item in tree:
-        if item['type'] == 'blob': 
-            path = item['path']
-            category = categorize_file(path)
-            if category in categorized_files:
-                categorized_files[category].append(path)
+    
+    # 1. 파일 경로만 쫙 뽑아내기
+    file_paths = [item['path'] for item in tree if item['type'] == 'blob']
+    
+    if not file_paths:
+        return categorized_files
+
+    # 2. LLM 엔진에 통째로 던져서 분류 결과 받아오기
+    categorized_files = categorize_files_with_gemini(file_paths)
             
     return categorized_files
 

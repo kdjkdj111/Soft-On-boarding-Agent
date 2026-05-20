@@ -1,5 +1,7 @@
 import os
+# pyrefly: ignore [missing-import]
 from google import genai
+# pyrefly: ignore [missing-import]
 from google.genai import types
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -62,3 +64,54 @@ def generate_onboarding_guide(repo_name, categorized_files, simulated_rag_contex
     )
     
     return response.text
+
+import json
+
+def categorize_files_with_gemini(file_paths):
+    """
+    파일 경로 리스트를 받아 Gemini API를 이용해 4가지 카테고리로 분류합니다.
+    """
+    system_prompt = """
+    너는 소프트웨어 아키텍처 분석가야.
+    주어진 파일 경로 목록을 분석해서 다음 4가지 카테고리 중 하나로 정확히 분류해야 해:
+    - Interface: 사용자 또는 외부 시스템과의 접점 (UI 컴포넌트, 컨트롤러, 라우터, API 엔드포인트 등)
+    - Functional: 핵심 비즈니스 로직 및 서비스 (Service, 유틸리티, 핵심 알고리즘, 핸들러 등)
+    - Data: 데이터 처리 및 저장 (SQL, 모델, 엔티티, DTO, 리포지토리, ETL 등)
+    - Process: 빌드, 설정, 문서, 배포 파이프라인 (설정 파일, CI/CD, README, 의존성 등)
+    
+    응답은 반드시 아래 JSON 형식으로만 반환해 줘. 마크다운이나 다른 텍스트는 절대 포함하지 마.
+    {
+      "Interface": ["경로1", "경로2"],
+      "Functional": ["경로3"],
+      "Data": ["경로4"],
+      "Process": ["경로5"]
+    }
+    """
+    
+    # 리스트를 문자열로 변환하여 프롬프트에 포함 (최대 파일 수가 너무 많으면 잘라낼 수도 있지만 지금은 통째로 보냄)
+    paths_str = "\n".join(file_paths)
+    user_prompt = f"다음 파일 경로들을 분류해줘:\n\n{paths_str}"
+    
+    print(f"🧠 [LLM] Gemini API를 호출하여 {len(file_paths)}개 파일 분류 중...")
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-3.1-flash-lite',
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.1,
+                response_mime_type="application/json",
+            )
+        )
+        
+        result = json.loads(response.text)
+        return result
+    except Exception as e:
+        print(f"❌ [LLM] 분류 실패: {e}")
+        return {
+            "Interface": [],
+            "Functional": [],
+            "Data": [],
+            "Process": []
+        }

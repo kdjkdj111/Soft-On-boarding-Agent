@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -106,8 +107,125 @@ public class SchemaParserService {
         }
 
         // ============================================
-        // 3. 관계 무결성 보완 및 SQL FK 유추
+        // 3. Python / pandas DataFrame 파싱 로직
         // ============================================
+
+        // 파싱 제외할 임시/시각화용/헬퍼 변수명 목록
+        Set<String> ignoreVars = new HashSet<>(Arrays.asList(
+            "df", "temp", "temp0", "temp1", "x", "y", "i", "j", "result",
+            "da_merge", "data_geod", "china_geod", "sentences", "segs",
+            "stopwords", "data", "da", "words", "peo", "lines", "elem",
+            "train_data", "test_data", "train_target", "test_target",
+            "coolpeo_list", "coolpeo_com", "coolpeo_movie_id",
+            "coolpeo_item", "coolpeo_item_com"
+        ));
+
+        // Pattern A: var = pd.read_csv/json/excel/table/sql(...) → 데이터 소스 테이블
+        Pattern pdReadPattern = Pattern.compile(
+            "^(\\w+)\\s*=\\s*pd\\.read_(?:csv|json|excel|table|sql)\\s*\\(['\"]?([^'\"\\s,)]+)['\"]?",
+            Pattern.MULTILINE
+        );
+        Matcher pdReadMatcher = pdReadPattern.matcher(fileContents);
+        while (pdReadMatcher.find()) {
+            String varName = pdReadMatcher.group(1);
+            String sourcePath = pdReadMatcher.group(2);
+            if (ignoreVars.contains(varName) || varName.length() <= 1) continue;
+            ParsedTable table = tables.computeIfAbsent(varName.toLowerCase(), k -> {
+                ParsedTable t = new ParsedTable();
+                t.name = varName;
+                return t;
+            });
+            // 소스 파일명 추출 및 중복 방지 (파일명 기준으로 중복 체크)
+            String fileName = sourcePath.contains("/")
+                ? sourcePath.substring(sourcePath.lastIndexOf('/') + 1)
+                : sourcePath;
+            final String displayName = "📂 " + fileName;
+            boolean sourceExists = table.columns.stream()
+                .anyMatch(c -> displayName.equals(c.get("name")));
+            if (!sourceExists) {
+                Map<String, String> col = new HashMap<>();
+                col.put("name", displayName);
+                col.put("type", "source");
+                table.columns.add(0, col);
+            }
+        }
+
+
+        // Pattern B: var = pd.DataFrame({'col1': ..., 'col2': ...}) → 명시적 컬럼 추출
+        Pattern pdDfPattern = Pattern.compile(
+            "^(\\w+)\\s*=\\s*pd\\.DataFrame\\s*\\(\\s*\\{([^}]+)\\}",
+            Pattern.MULTILINE | Pattern.DOTALL
+        );
+        Matcher pdDfMatcher = pdDfPattern.matcher(fileContents);
+        while (pdDfMatcher.find()) {
+            String varName = pdDfMatcher.group(1);
+            String dictBody = pdDfMatcher.group(2);
+            if (ignoreVars.contains(varName) || varName.length() <= 1) continue;
+            ParsedTable table = tables.computeIfAbsent(varName.toLowerCase(), k -> {
+                ParsedTable t = new ParsedTable();
+                t.name = varName;
+                return t;
+            });
+            // dict key 추출: 'col' 또는 "col" 패턴
+            Pattern keyPattern = Pattern.compile("['\"]([^'\"]+)['\"]\\s*:");
+            Matcher keyMatcher = keyPattern.matcher(dictBody);
+            while (keyMatcher.find()) {
+                String colName = keyMatcher.group(1);
+                boolean exists = table.columns.stream().anyMatch(c -> colName.equals(c.get("name")));
+                if (!exists) {
+                    Map<String, String> col = new HashMap<>();
+                    col.put("name", colName);
+                    col.put("type", "Series");
+                    table.columns.add(col);
+                }
+            }
+        }
+
+        // Pattern C: var['col'] = ... → 컬럼 동적 추가
+        Pattern colAssignPattern = Pattern.compile(
+            "^(\\w+)\\s*\\[['\"]([^'\"]+)['\"]\\]\\s*=",
+            Pattern.MULTILINE
+        );
+        Matcher colAssignMatcher = colAssignPattern.matcher(fileContents);
+        while (colAssignMatcher.find()) {
+            String varName = colAssignMatcher.group(1);
+            String colName = colAssignMatcher.group(2);
+            if (ignoreVars.contains(varName) || varName.length() <= 1) continue;
+            if (!tables.containsKey(varName.toLowerCase())) continue; // 이미 감지된 테이블에만 추가
+            ParsedTable table = tables.get(varName.toLowerCase());
+            boolean exists = table.columns.stream().anyMatch(c -> colName.equals(c.get("name")));
+            if (!exists) {
+                Map<String, String> col = new HashMap<>();
+                col.put("name", colName);
+                col.put("type", "Series");
+                table.columns.add(col);
+            }
+        }
+
+        // Pattern D: result = df1.merge(df2, ...) → 테이블 간 관계
+        Pattern mergePattern = Pattern.compile(
+            "^(\\w+)\\s*=\\s*(\\w+)\\.merge\\s*\\(\\s*(\\w+)",
+            Pattern.MULTILINE
+        );
+        Matcher mergeMatcher = mergePattern.matcher(fileContents);
+        while (mergeMatcher.find()) {
+            String left = mergeMatcher.group(2).toLowerCase();
+            String right = mergeMatcher.group(3).toLowerCase();
+            if (tables.containsKey(left) && tables.containsKey(right)) {
+                tables.get(left).children.add(right);
+                tables.get(right).parents.add(left);
+            }
+        }
+
+
+        // 유효하지 않은 테이블 제거: source 컬럼만 3개 초과이고 데이터 컬럼이 없는 경우 (stopwords 같은 유틸 테이블)
+        tables.entrySet().removeIf(entry -> {
+            ParsedTable t = entry.getValue();
+            long sourceCount = t.columns.stream().filter(c -> "source".equals(c.get("type"))).count();
+            long dataCount   = t.columns.stream().filter(c -> !"source".equals(c.get("type"))).count();
+            return sourceCount > 3 && dataCount == 0;
+        });
+
         // Prisma 양방향 매핑 대칭화
         for (ParsedTable table : tables.values()) {
             String name = table.name.toLowerCase();

@@ -110,8 +110,8 @@ export function DataView() {
   useEffect(() => {
     const fetchSchemaData = async () => {
       try {
-        // 하드코딩된 임시 리포지토리 URL (추후 동적으로 변경 가능)
-        const repositoryUrl = "vector/onboarding";
+        // 하드코딩된 임시 리포지토리 URL (.env.example에 있던 TOP250movie_douban으로 변경)
+        const repositoryUrl = "TOP250movie_douban";
         const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
         const response = await axios.get(`${API_BASE}/api/v1/data-view/schema?repositoryUrl=${repositoryUrl}`);

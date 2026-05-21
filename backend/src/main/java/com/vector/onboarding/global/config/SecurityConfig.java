@@ -40,8 +40,6 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/error", "/favicon.ico", "/oauth2/**", "/login/**", "/api/v1/data-view/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
-                        // AI 파이프라인이 JWT 없이 분석 결과를 적재할 수 있도록 허용
-                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/spaces/*/functional-elements").permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(headers -> headers.frameOptions(frame -> frame.disable()))

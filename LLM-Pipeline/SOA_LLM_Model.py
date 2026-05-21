@@ -11,6 +11,7 @@ load_dotenv(dotenv_path=env_path)
 # 환경변수가 로드된 후 안전하게 다른 모듈들을 불러옵니다.
 # pyrefly: ignore [missing-import]
 from supabase import create_client, Client
+from datetime import datetime, timezone
 from github_analyzer import analyze_single_repository, fetch_recent_commits, fetch_file_contents
 from llm_engine import analyze_functional_view, analyze_interface_view, analyze_data_view, analyze_process_view
 from urllib.parse import urlparse
@@ -20,7 +21,10 @@ def parse_repo_info(repo_url):
     path = urlparse(repo_url).path.strip('/')
     parts = path.split('/')
     if len(parts) >= 2:
-        return parts[0], parts[1]
+        repo_name = parts[1]
+        if repo_name.endswith('.git'):
+            repo_name = repo_name[:-4]
+        return parts[0], repo_name
     return None, None
 
 def main():
@@ -66,36 +70,42 @@ def main():
             func_data = analyze_functional_view(REPO_NAME, func_content)
             for forest in func_data:
                 try:
-                    f_res = supabase.table("functional_elements").insert({
+                    f_res = supabase.table("functional").insert({
                         "space_id": SPACE_ID, 
+                        "repo_name": REPO_NAME,
                         "name": forest.get("name", "Unknown"), 
                         "element_type": "FOREST", 
-                        "description": forest.get("description", "")
+                        "description": forest.get("description", ""),
+                        "created_at": datetime.now(timezone.utc).isoformat()
                     }).execute()
                     
                     if f_res.data:
                         forest_id = f_res.data[0]['id']
                         for tree in forest.get("children", []):
-                            t_res = supabase.table("functional_elements").insert({
+                            t_res = supabase.table("functional").insert({
                                 "space_id": SPACE_ID, 
+                                "repo_name": REPO_NAME,
                                 "parent_id": forest_id, 
                                 "name": tree.get("name", "Unknown"),
                                 "element_type": "TREE", 
                                 "description": tree.get("description", ""), 
-                                "file_path": tree.get("file_path", "")
+                                "file_path": tree.get("file_path", ""),
+                                "created_at": datetime.now(timezone.utc).isoformat()
                             }).execute()
                             
                             if t_res.data:
                                 tree_id = t_res.data[0]['id']
                                 for ring in tree.get("children", []):
-                                    supabase.table("functional_elements").insert({
+                                    supabase.table("functional").insert({
                                         "space_id": SPACE_ID, 
+                                        "repo_name": REPO_NAME,
                                         "parent_id": tree_id, 
                                         "name": ring.get("name", "Unknown"),
                                         "element_type": "RING", 
                                         "description": ring.get("description", ""), 
                                         "api_method": ring.get("api_method", ""), 
-                                        "api_url": ring.get("api_url", "")
+                                        "api_url": ring.get("api_url", ""),
+                                        "created_at": datetime.now(timezone.utc).isoformat()
                                     }).execute()
                 except Exception as e:
                     print(f"  ❌ Functional View 적재 실패: {e}")
@@ -113,7 +123,7 @@ def main():
         if iface_content:
             iface_data = analyze_interface_view(REPO_NAME, iface_content)
             try:
-                supabase.table("Interface").insert({
+                supabase.table("interface").insert({
                     "repo_name": REPO_NAME,
                     "space_id": SPACE_ID,
                     "interface_view_data": iface_data
@@ -134,7 +144,7 @@ def main():
         if data_content:
             schema_data = analyze_data_view(REPO_NAME, data_content)
             try:
-                supabase.table("Data").insert({
+                supabase.table("data").insert({
                     "repo_name": REPO_NAME,
                     "space_id": SPACE_ID,
                     "analyzed_json": schema_data
@@ -155,7 +165,7 @@ def main():
         if proc_content:
             proc_data = analyze_process_view(REPO_NAME, proc_content)
             try:
-                supabase.table("Process").insert({
+                supabase.table("process").insert({
                     "repo_name": REPO_NAME,
                     "space_id": SPACE_ID,
                     "process_json": proc_data
@@ -180,10 +190,12 @@ def main():
             date = info.get('author', {}).get('date', '')[:10]
             
             commits_data.append({
+                "space_id": SPACE_ID,
                 "repo_name": REPO_NAME,
                 "commit_sha": sha,
                 "message": msg,
-                "commit_date": date
+                "commit_date": date,
+                "author": commit_data.get('commit', {}).get('author', {}).get('name', 'Unknown')
             })
 
     if commits_data:
@@ -199,7 +211,7 @@ def main():
     # 5. [필수 확인] DB 데이터 검증 로직
     # ==========================================
     print("\n🔍 [데이터 검증] Supabase에 데이터가 진짜로 들어갔는지 확인합니다...")
-    check_tables = ["functional_elements", "Interface", "Data", "Process", "commit_history"]
+    check_tables = ["functional", "interface", "data", "process", "commit_history"]
     for table_name in check_tables:
         try:
             response = supabase.table(table_name).select("*", count='exact').limit(1).execute()

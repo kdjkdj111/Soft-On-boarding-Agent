@@ -52,7 +52,7 @@ public class SpaceService {
     /**
      * 팀 스페이스를 생성합니다.
      * 생성자는 자동으로 ADMIN 역할의 SpaceMember로 등록됩니다.
-     * GitHub 분석은 사용자 응답을 블로킹하지 않도록 비동기로 실행됩니다.
+     * GitHub 분석은 동기적으로 실행되며, 완전히 끝날 때까지 대기합니다.
      */
     public CreateSpaceResponseDto createSpace(Long userId, CreateSpaceRequestDto dto) {
         User user = userRepository.findById(userId)
@@ -81,9 +81,9 @@ public class SpaceService {
         user.updateTeamCode(teamCode);
         userRepository.save(user);
 
-        // [팀원 연동부] GitHub 레포지토리 분석 - 비동기 실행 (응답 블로킹 없음)
+        // [팀원 연동부] GitHub 레포지토리 분석 - 동기 실행 (파이프라인 완료 대기)
         githubAnalysisService.analyzeAndSaveProjectStructure(savedSpace.getId(), dto.getRepoUrl());
-        log.info("Space 생성 완료. spaceId={}, teamCode={}, 분석 비동기 시작", savedSpace.getId(), teamCode);
+        log.info("Space 생성 완료 및 AI 파이프라인 분석 완료. spaceId={}, teamCode={}", savedSpace.getId(), teamCode);
 
         return new CreateSpaceResponseDto(savedSpace.getId(), teamCode);
     }

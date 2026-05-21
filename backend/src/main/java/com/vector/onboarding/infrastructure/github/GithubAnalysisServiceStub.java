@@ -2,7 +2,6 @@ package com.vector.onboarding.infrastructure.github;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -19,10 +18,9 @@ import java.nio.file.Paths;
 @Primary
 public class GithubAnalysisServiceStub implements GithubAnalysisService {
 
-    @Async("githubAnalysisExecutor")
     @Override
     public void analyzeAndSaveProjectStructure(Long spaceId, String repoUrl) {
-        log.info("[GithubAnalysisService STUB] 비동기 분석 호출됨 - spaceId: {}, repoUrl: {}", spaceId, repoUrl);
+        log.info("[GithubAnalysisService STUB] 동기(Synchronous) 분석 호출됨 - spaceId: {}, repoUrl: {}", spaceId, repoUrl);
 
         try {
             // 프로젝트 루트 기준 LLM-Pipeline 경로 설정 (백엔드 실행 위치에 따라 다를 수 있음)

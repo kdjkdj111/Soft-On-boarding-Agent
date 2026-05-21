@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 @Table(
     name = "\"Functional\"",
     indexes = {
-        @Index(name = "idx_functional_elements_space_id", columnList = "space_id")
+        @Index(name = "idx_functional_space_id", columnList = "space_id")
     }
 )
 @Getter

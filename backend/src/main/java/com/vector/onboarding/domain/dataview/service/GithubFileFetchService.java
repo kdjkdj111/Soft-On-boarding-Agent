@@ -4,50 +4,82 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
 
 @Slf4j
 @Service
 public class GithubFileFetchService {
 
-    @Value("${app.github.api-url}")
-    private String githubApiUrl;
+    private final WebClient webClient;
+    private final ObjectMapper objectMapper = new ObjectMapper(); // Jupyter 파싱을 위한 도구 추가
 
-    @Value("${app.github.system-token}")
-    private String systemToken;
-
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    public String fetchFileContent(String repositoryUrl, String filePath) {
-        log.info("GitHub API 호출하여 파일 내용을 가져옵니다. repository: {}, path: {}", repositoryUrl, filePath);
-
-        // Github API URL 생성 (예: https://api.github.com/repos/{owner}/{repo}/contents/{path})
-        String repoPath = repositoryUrl;
-        if (!repoPath.contains("/")) {
-            repoPath = "iphysresearch/" + repoPath; // owner 정보가 없으면 기본값 추가
+    public GithubFileFetchService(
+            WebClient.Builder webClientBuilder,
+            @Value("${app.github.api-url:https://api.github.com}") String githubApiUrl,
+            @Value("${app.github.system-token:}") String systemToken) {
+        
+        WebClient.Builder builder = webClientBuilder.baseUrl(githubApiUrl);
+        
+        if (systemToken != null && !systemToken.isEmpty()) {
+            builder.defaultHeader("Authorization", "Bearer " + systemToken);
         }
-        String url = githubApiUrl + "/repos/" + repoPath + "/contents/" + filePath;
+        
+        this.webClient = builder
+                .defaultHeader("Accept", "application/vnd.github.v3+json")
+                .build();
+    }
+
+    /**
+     * GitHub Git Trees API 호출 (재귀적)
+     */
+    public JsonNode fetchGitTree(String owner, String repo, String branchSha) {
+        log.info("Fetching git tree for {}/{} at {}", owner, repo, branchSha);
+        return webClient.get()
+                .uri("/repos/{owner}/{repo}/git/trees/{branch}?recursive=1", owner, repo, branchSha)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .block();
+    }
+
+    /**
+     * GitHub Commits API 호출 (최근 100개)
+     */
+    public JsonNode fetchCommits(String owner, String repo) {
+        log.info("Fetching commits for {}/{}", owner, repo);
+        return webClient.get()
+                .uri("/repos/{owner}/{repo}/commits?per_page=100", owner, repo)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .block();
+    }
+
+    /**
+     * GitHub API 호출하여 파일 내용을 가져옵니다. (DataViewService 연동용)
+     */
+    public String fetchFileContent(String repositoryUrl, String filePath) {
+        log.info("Fetching file content for repo: {}, path: {}", repositoryUrl, filePath);
+        
+        String urlPath = repositoryUrl.replace("https://github.com/", "").replace(".git", "");
+        String[] parts = urlPath.split("/");
+        if (parts.length < 2) {
+            log.error("잘못된 레포지토리 URL 형식입니다: {}", repositoryUrl);
+            return "// 파일 내용을 가져오는데 실패했습니다: " + filePath;
+        }
+        String owner = parts[0];
+        String repo = parts[1];
 
         try {
-            HttpHeaders headers = new HttpHeaders();
-            if (systemToken != null && !systemToken.trim().isEmpty()) {
-                headers.set("Authorization", "Bearer " + systemToken);
-            }
-            headers.set("Accept", "application/vnd.github.v3.raw");
+            String uri = "/repos/" + owner + "/" + repo + "/contents/" + filePath;
+            String body = webClient.get()
+                    .uri(uri)
+                    .header("Accept", "application/vnd.github.v3.raw")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
 
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-            String body = response.getBody();
-
-            // .ipynb 파일인 경우 JSON에서 코드 셀만 추출
-            if (filePath.endsWith(".ipynb")) {
+            // .ipynb 파일인 경우 JSON에서 코드 셀만 추출 (팀원 로직 병합)
+            if (filePath != null && filePath.endsWith(".ipynb")) {
                 return extractCodeFromIpynb(body, filePath);
             }
 

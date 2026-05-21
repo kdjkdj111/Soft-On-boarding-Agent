@@ -8,6 +8,7 @@ import { InterfaceView } from './pages/InterfaceView';
 import { ProcessFlowView } from './pages/ProcessFlowView';
 import { QAView } from './pages/QAView';
 import { SettingsView } from './pages/SettingsView';
+import { MemberManagementView } from './pages/MemberManagementView';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,16 @@ function ProtectedTeamRoute({ children }: { children: React.ReactNode }) {
   
   if (!user?.teamCode) {
     return <Navigate to="/onboarding" replace />;
+  }
+  
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const isAdmin = useAuthStore((state) => state.user?.isAdmin);
+  
+  if (!isAdmin) {
+    return <Navigate to="/functional" replace />;
   }
   
   return <>{children}</>;
@@ -63,6 +74,14 @@ function App() {
           <Route path="process-flow" element={<ProcessFlowView />} />
           <Route path="qa" element={<QAView />} />
           <Route path="settings" element={<SettingsView />} />
+          <Route 
+            path="members" 
+            element={
+              <AdminRoute>
+                <MemberManagementView />
+              </AdminRoute>
+            } 
+          />
         </Route>
       </Routes>
     </BrowserRouter>

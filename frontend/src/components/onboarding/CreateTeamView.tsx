@@ -35,6 +35,7 @@ export function CreateTeamView({ onViewChange }: CreateTeamViewProps) {
   const [errorMsg, setErrorMsg] = useState('');
   const setTeamCode = useAuthStore((state) => state.setTeamCode);
   const setSpaceId = useAuthStore((state) => state.setSpaceId);
+  const setIsAdmin = useAuthStore((state) => state.setIsAdmin);
 
   const handleCreate = async () => {
     if (!teamName || !repoUrl || !selectedRole) return;
@@ -45,6 +46,7 @@ export function CreateTeamView({ onViewChange }: CreateTeamViewProps) {
       const response = await spaceApi.createSpace({ name: teamName, repoUrl, jobRole: selectedRole });
       setTeamCode(response.teamCode);
       setSpaceId(response.spaceId); // createSpace 응답에 spaceId 포함
+      setIsAdmin(true); // 생성자는 관리자임
       onViewChange('analyzing');
     } catch (error: any) {
       setErrorMsg(error.message || '오류가 발생했습니다.');

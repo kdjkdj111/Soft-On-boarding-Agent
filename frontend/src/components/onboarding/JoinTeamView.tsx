@@ -19,6 +19,7 @@ export function JoinTeamView({ onViewChange }: JoinTeamViewProps) {
   const navigate = useNavigate();
   const setTeamCode = useAuthStore((state) => state.setTeamCode);
   const setSpaceId = useAuthStore((state) => state.setSpaceId);
+  const setIsAdmin = useAuthStore((state) => state.setIsAdmin);
 
   const handleJoin = async () => {
     if (!teamCode || !selectedRole) return;
@@ -31,6 +32,7 @@ export function JoinTeamView({ onViewChange }: JoinTeamViewProps) {
       const profile = await userApi.getProfile();
       setTeamCode(teamCode);
       setSpaceId(profile.teamInfo?.spaceId ?? null);
+      setIsAdmin(false); // 참여자는 관리자가 아님
       // 백엔드 합류 성공 후 직무 기반 메인뷰로 이동
       navigate('/functional');
     } catch (error: any) {

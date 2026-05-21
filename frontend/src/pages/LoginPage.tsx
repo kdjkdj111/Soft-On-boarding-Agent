@@ -41,15 +41,16 @@ export function LoginPage() {
           login(authToken, {
             teamCode: userProfile.teamCode,
             spaceId: profile.teamInfo?.spaceId ?? null,
+            isAdmin: profile.teamInfo?.isAdmin ?? false,
           });
           navigate('/functional', { replace: true });
         } else {
-          login(authToken, { teamCode: null, spaceId: null });
+          login(authToken, { teamCode: null, spaceId: null, isAdmin: false });
           navigate('/onboarding', { replace: true });
         }
       } catch (error) {
         console.error('Failed to verify user:', error);
-        login(authToken, { teamCode: null, spaceId: null });
+        login(authToken, { teamCode: null, spaceId: null, isAdmin: false });
         navigate('/onboarding', { replace: true });
       }
     };

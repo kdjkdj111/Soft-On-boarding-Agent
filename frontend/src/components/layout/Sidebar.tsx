@@ -9,7 +9,8 @@ import {
   Settings, 
   ChevronRight,
   LogOut,
-  User
+  User,
+  Users
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { userApi, type UserProfileResponse } from '../../services/userApi';
@@ -24,6 +25,7 @@ const navigation = [
 export function Sidebar() {
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
+  const isAdmin = useAuthStore((state) => state.user?.isAdmin);
   const [profile, setProfile] = useState<UserProfileResponse | null>(null);
 
   useEffect(() => {
@@ -115,6 +117,31 @@ export function Sidebar() {
             </li>
           </ul>
         </div>
+        
+        {isAdmin && (
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              ADMIN
+            </h3>
+            <ul className="space-y-1">
+              <li>
+                <NavLink
+                  to="/members"
+                  className={({ isActive }) =>
+                    `flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isActive
+                        ? 'bg-gray-200 text-gray-900'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`
+                  }
+                >
+                  <Users className="w-4 h-4 mr-3 flex-shrink-0" />
+                  팀원 관리
+                </NavLink>
+              </li>
+            </ul>
+          </div>
+        )}
       </nav>
 
       {/* Bottom Settings & Logout */}

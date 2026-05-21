@@ -30,6 +30,7 @@ export interface UserProfileResponse {
     teamCode: string;
     repoUrl: string;
     createdAt: string;
+    isAdmin: boolean;
   } | null;
 }
 

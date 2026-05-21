@@ -177,6 +177,8 @@ public class SpaceController {
         spaceService.deleteTask(taskId);
         return ResponseEntity.noContent().build();
     }
+
+    /**
      * 특정 스페이스의 전체 팀원 목록을 조회합니다.
      * GET /api/spaces/{spaceId}/members
      * 멤버만 접근 가능 (비멤버 → 403)

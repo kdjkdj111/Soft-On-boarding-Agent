@@ -67,6 +67,17 @@ export const userApi = {
       throw new Error('마이페이지 프로필 정보를 가져오는데 실패했습니다.');
     }
 
-    return response.json();
+    const data: UserProfileResponse = await response.json();
+    
+    // 중앙 방어 로직: 프로필을 가져왔는데 팀 정보가 없다면, 
+    // 사용자가 추방당했거나 팀이 해체된 것이므로 로컬 상태를 클리어함
+    const currentUser = useAuthStore.getState().user;
+    if (!data.teamInfo && currentUser?.teamCode) {
+      useAuthStore.getState().setTeamCode(null);
+      useAuthStore.getState().setSpaceId(null);
+      useAuthStore.getState().setIsAdmin(false);
+    }
+
+    return data;
   },
 };

@@ -3,8 +3,10 @@ package com.vector.onboarding.domain.space;
 import com.vector.onboarding.domain.space.dto.CreateSpaceRequestDto;
 import com.vector.onboarding.domain.space.dto.CreateSpaceResponseDto;
 import com.vector.onboarding.domain.space.dto.CreateBoardTaskRequestDto;
+import com.vector.onboarding.domain.space.dto.MemberResponseDto;
 import com.vector.onboarding.domain.user.User;
 import com.vector.onboarding.domain.user.UserRepository;
+import com.vector.onboarding.global.exception.AccessDeniedException;
 import com.vector.onboarding.global.exception.SpaceNotFoundException;
 import com.vector.onboarding.infrastructure.github.GithubAnalysisService;
 import com.vector.onboarding.domain.dataview.repository.GithubFileRepository;
@@ -24,6 +26,8 @@ import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -160,9 +164,109 @@ public class SpaceService {
     }
 
     /**
-     * DB에 존재하지 않는 고유한 8자리 팀 코드를 생성합니다.
-     * 패키지 수준 접근자(package-private)로 선언하여 단위 테스트에서 직접 검증 가능하게 합니다.
+     * 특정 스페이스의 전체 팀원 목록을 조회합니다.
+     * 요청자가 해당 스페이스 멤버인지 먼저 검증합니다.
      */
+    @Transactional(readOnly = true)
+    public List<MemberResponseDto> getMembers(Long requestUserId, Long spaceId) {
+        checkSpaceMembership(requestUserId, spaceId);
+
+        // SpaceMember 목록 조회 (쿼리 1회)
+        List<SpaceMember> members = spaceMemberRepository.findAllBySpaceId(spaceId);
+
+        // userId 목록 추출 → User 한 번에 IN 쿼리 (쿼리 1회, N+1 방지)
+        List<Long> userIds = members.stream()
+                .map(SpaceMember::getUserId)
+                .collect(Collectors.toList());
+        Map<Long, User> userMap = userRepository.findAllByIdIn(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u));
+
+        return members.stream()
+                .map(m -> {
+                    User user = userMap.get(m.getUserId());
+                    return new MemberResponseDto(
+                            user.getId(),
+                            user.getUsername(),
+                            user.getEmail(),
+                            m.getJobRole(),
+                            m.getMemberRole() == SpaceMemberRole.ADMIN
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 대상 유저에게 ADMIN 권한을 부여합니다.
+     * 요청자가 ADMIN인지 먼저 검증합니다.
+     */
+    public void assignAdmin(Long requestUserId, Long spaceId, Long targetUserId) {
+        checkAdminPermission(requestUserId, spaceId);
+
+        SpaceMember targetMember = spaceMemberRepository.findBySpaceIdAndUserId(spaceId, targetUserId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 유저는 이 스페이스의 멤버가 아닙니다."));
+
+        targetMember.changeRole(SpaceMemberRole.ADMIN); // 변경 감지(dirty checking)
+        log.info("ADMIN 권한 부여. requestUserId={}, targetUserId={}, spaceId={}", requestUserId, targetUserId, spaceId);
+    }
+
+    /**
+     * 대상 유저를 팀에서 추방합니다.
+     * - 본인 추방 불가
+     * - 마지막 ADMIN 추방 불가
+     */
+    public void kickMember(Long requestUserId, Long spaceId, Long targetUserId) {
+        checkAdminPermission(requestUserId, spaceId);
+
+        if (requestUserId.equals(targetUserId)) {
+            throw new IllegalArgumentException("자기 자신을 추방할 수 없습니다. 탈퇴는 '/leave'를 이용해 주세요.");
+        }
+
+        SpaceMember targetMember = spaceMemberRepository.findBySpaceIdAndUserId(spaceId, targetUserId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 유저는 이 스페이스의 멤버가 아닙니다."));
+
+        // 마지막 ADMIN 추방 방지
+        if (targetMember.getMemberRole() == SpaceMemberRole.ADMIN) {
+            List<SpaceMember> admins = spaceMemberRepository.findAllBySpaceIdAndMemberRole(spaceId, SpaceMemberRole.ADMIN);
+            if (admins.size() <= 1) {
+                throw new IllegalArgumentException("마지막 관리자는 추방할 수 없습니다. 먼저 다른 멤버에게 관리자 권한을 부여해 주세요.");
+            }
+        }
+
+        // SpaceMember 삭제 + User teamCode 초기화
+        User targetUser = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + targetUserId));
+        spaceMemberRepository.delete(targetMember);
+        targetUser.updateTeamCode(null);
+
+        log.info("팀원 추방 완료. requestUserId={}, targetUserId={}, spaceId={}", requestUserId, targetUserId, spaceId);
+    }
+
+    // ─── 권한 검증 헬퍼 ───────────────────────────────────────────────
+
+    /**
+     * 요청자가 해당 스페이스의 멤버인지 검증합니다. (일반 접근 권한)
+     * 멤버가 아니면 403 AccessDeniedException.
+     */
+    public void checkSpaceMembership(Long userId, Long spaceId) {
+        if (!spaceMemberRepository.existsBySpaceIdAndUserId(spaceId, userId)) {
+            throw new AccessDeniedException("해당 스페이스에 접근 권한이 없습니다.");
+        }
+    }
+
+    /**
+     * 요청자가 해당 스페이스의 ADMIN인지 검증합니다. (관리자 전용 기능)
+     * ADMIN이 아니면 403 AccessDeniedException.
+     */
+    private void checkAdminPermission(Long userId, Long spaceId) {
+        SpaceMember member = spaceMemberRepository.findBySpaceIdAndUserId(spaceId, userId)
+                .orElseThrow(() -> new AccessDeniedException("해당 스페이스에 접근 권한이 없습니다."));
+        if (member.getMemberRole() != SpaceMemberRole.ADMIN) {
+            throw new AccessDeniedException("해당 스페이스에 대한 관리자 권한이 없습니다.");
+        }
+    }
+
+    // ─── 팀 코드 생성 유틸 ───────────────────────────────────────────
+
     String generateUniqueTeamCode() {
         String code;
         do {

@@ -37,13 +37,21 @@ export function LoginPage() {
         login(authToken, { teamCode: userProfile.teamCode });
         
         if (userProfile.teamCode) {
+          // 이미 팀이 있으면 profile도 조회해서 spaceId까지 저장
+          const profile = await userApi.getProfile(authToken);
+          login(authToken, {
+            teamCode: userProfile.teamCode,
+            spaceId: profile.teamInfo?.spaceId ?? null,
+            isAdmin: profile.teamInfo?.isAdmin ?? false,
+          });
           navigate('/functional', { replace: true });
         } else {
+          login(authToken, { teamCode: null, spaceId: null, isAdmin: false });
           navigate('/onboarding', { replace: true });
         }
       } catch (error) {
         console.error('Failed to verify user:', error);
-        login(authToken, { teamCode: null });
+        login(authToken, { teamCode: null, spaceId: null, isAdmin: false });
         navigate('/onboarding', { replace: true });
       }
     };

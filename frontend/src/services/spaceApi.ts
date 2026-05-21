@@ -17,6 +17,19 @@ export interface CreateSpaceRequest {
   jobRole: string;
 }
 
+export interface JoinSpaceRequest {
+  teamCode: string;
+  jobRole: string;
+}
+
+export interface MemberResponse {
+  userId: number;
+  username: string;
+  email: string;
+  jobRole: string;
+  isAdmin: boolean;
+}
+
 export interface CreateSpaceResponse {
   spaceId: number;
   teamCode: string;
@@ -83,7 +96,6 @@ export const spaceApi = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || '팀 탈퇴에 실패했습니다.');
     }
   },
@@ -192,6 +204,48 @@ export const spaceApi = {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || '태스크 삭제에 실패했습니다.');
+    }
+  },
+
+  // ======================================================================
+  // Members — 멤버 관리
+  // ======================================================================
+
+  getMembers: async (spaceId: number): Promise<MemberResponse[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/spaces/${spaceId}/members`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || '팀원 목록 조회에 실패했습니다.');
+    }
+
+    return response.json();
+  },
+
+  assignAdmin: async (spaceId: number, userId: number): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/api/spaces/${spaceId}/members/${userId}/assign-admin`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || '관리자 지정에 실패했습니다.');
+    }
+  },
+
+  kickMember: async (spaceId: number, userId: number): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/api/spaces/${spaceId}/members/${userId}/kick`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || '팀원 추방에 실패했습니다.');
     }
   },
 };

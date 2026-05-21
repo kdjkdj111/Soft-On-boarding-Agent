@@ -3,10 +3,18 @@ import { JoinTeamView } from '../components/onboarding/JoinTeamView';
 import { CreateTeamView } from '../components/onboarding/CreateTeamView';
 import { AnalyzingLoader } from '../components/onboarding/AnalyzingLoader';
 
+import { useAuthStore } from '../store/authStore';
+import { Navigate } from 'react-router-dom';
+
 export type OnboardingView = 'join' | 'create' | 'analyzing';
 
 export function OnboardingPage() {
   const [currentView, setCurrentView] = useState<OnboardingView>('join');
+  const user = useAuthStore((state) => state.user);
+
+  if (user?.teamCode) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50/50 flex flex-col items-center justify-center p-4">

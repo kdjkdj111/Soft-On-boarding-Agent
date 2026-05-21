@@ -1,6 +1,7 @@
 package com.vector.onboarding.domain.dataview.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class GithubFileFetchService {
 
     private final WebClient webClient;
+    private final ObjectMapper objectMapper = new ObjectMapper(); // Jupyter 파싱을 위한 도구 추가
 
     public GithubFileFetchService(
             WebClient.Builder webClientBuilder,
@@ -52,8 +54,6 @@ public class GithubFileFetchService {
                 .block();
     }
 
-
-
     /**
      * GitHub API 호출하여 파일 내용을 가져옵니다. (DataViewService 연동용)
      */
@@ -71,15 +71,55 @@ public class GithubFileFetchService {
 
         try {
             String uri = "/repos/" + owner + "/" + repo + "/contents/" + filePath;
-            return webClient.get()
+            String body = webClient.get()
                     .uri(uri)
                     .header("Accept", "application/vnd.github.v3.raw")
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
+
+            // .ipynb 파일인 경우 JSON에서 코드 셀만 추출 (팀원 로직 병합)
+            if (filePath != null && filePath.endsWith(".ipynb")) {
+                return extractCodeFromIpynb(body, filePath);
+            }
+
+            return body;
         } catch (Exception e) {
             log.error("GitHub 파일 가져오기 실패: {}", e.getMessage());
             return "// 파일 내용을 가져오는데 실패했습니다: " + filePath;
+        }
+    }
+
+    /**
+     * Jupyter Notebook (.ipynb) JSON 파일에서 코드 셀(code cell)의 소스만 추출하여 하나의 문자열로 반환합니다.
+     */
+    private String extractCodeFromIpynb(String ipynbJson, String filePath) {
+        try {
+            JsonNode root = objectMapper.readTree(ipynbJson);
+            JsonNode cells = root.path("cells");
+            StringBuilder sb = new StringBuilder();
+            sb.append("# === SOURCE: ").append(filePath).append(" ===\n");
+
+            if (cells.isArray()) {
+                for (JsonNode cell : cells) {
+                    String cellType = cell.path("cell_type").asText();
+                    if ("code".equals(cellType)) {
+                        JsonNode source = cell.path("source");
+                        if (source.isArray()) {
+                            for (JsonNode line : source) {
+                                sb.append(line.asText());
+                            }
+                        } else if (!source.isMissingNode()) {
+                            sb.append(source.asText());
+                        }
+                        sb.append("\n# --- CELL ---\n");
+                    }
+                }
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn(".ipynb 파일 파싱 실패 ({}), raw 내용 반환: {}", filePath, e.getMessage());
+            return ipynbJson;
         }
     }
 }

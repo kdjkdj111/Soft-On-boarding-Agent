@@ -21,6 +21,7 @@ public class UserProfileResponseDto {
         
         if (space != null) {
             this.teamInfo = new TeamInfo(
+                    space.getId(),
                     space.getName(),
                     space.getTeamCode(),
                     space.getRepoUrl(),
@@ -33,12 +34,14 @@ public class UserProfileResponseDto {
 
     @Getter
     public static class TeamInfo {
+        private Long spaceId;
         private String teamName;
         private String teamCode;
         private String repoUrl;
         private LocalDateTime createdAt;
 
-        public TeamInfo(String teamName, String teamCode, String repoUrl, LocalDateTime createdAt) {
+        public TeamInfo(Long spaceId, String teamName, String teamCode, String repoUrl, LocalDateTime createdAt) {
+            this.spaceId = spaceId;
             this.teamName = teamName;
             this.teamCode = teamCode;
             this.repoUrl = repoUrl;

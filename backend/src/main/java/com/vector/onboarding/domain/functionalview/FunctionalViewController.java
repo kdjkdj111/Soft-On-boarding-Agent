@@ -2,8 +2,11 @@ package com.vector.onboarding.domain.functionalview;
 
 import com.vector.onboarding.domain.functionalview.dto.FunctionalElementSaveRequestDto;
 import com.vector.onboarding.domain.functionalview.dto.FunctionalViewResponseDto;
+import com.vector.onboarding.domain.space.SpaceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,16 +24,24 @@ public class FunctionalViewController {
 
     private final FunctionalViewService functionalViewService;
     private final FunctionalElementAdminService functionalElementAdminService;
+    private final SpaceService spaceService;
 
     /**
      * 특정 스페이스의 Functional View 데이터를 React Flow 규격으로 반환합니다.
-     * 프론트엔드가 호출합니다. JWT 인증 필요.
+     * JWT 인증 + 스페이스 멤버십 검증 필요.
+     * 비멤버가 spaceId를 조작하여 접근 시도 시 403 반환.
      *
      * @param spaceId 조회할 스페이스 ID
      * @return { nodes: [...], edges: [...] }
      */
     @GetMapping("/functional-view")
-    public ResponseEntity<FunctionalViewResponseDto> getFunctionalView(@PathVariable Long spaceId) {
+    public ResponseEntity<FunctionalViewResponseDto> getFunctionalView(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long spaceId) {
+
+        Long requestUserId = Long.valueOf(userDetails.getUsername());
+        spaceService.checkSpaceMembership(requestUserId, spaceId); // 멤버십 검증 → 비멤버 403
+
         FunctionalViewResponseDto response = functionalViewService.getFunctionalView(spaceId);
         return ResponseEntity.ok(response);
     }

@@ -65,40 +65,40 @@ def main():
         if func_content:
             func_data = analyze_functional_view(REPO_NAME, func_content)
             for forest in func_data:
-                f_res = supabase.table("Functional").insert({
-                    "repo_name": REPO_NAME,
-                    "space_id": SPACE_ID, 
-                    "name": forest.get("name", "Unknown"), 
-                    "element_type": "FOREST", 
-                    "description": forest.get("description", "")
-                }).execute()
-                
-                if f_res.data:
-                    forest_id = f_res.data[0]['id']
-                    for tree in forest.get("children", []):
-                        t_res = supabase.table("Functional").insert({
-                            "repo_name": REPO_NAME,
-                            "space_id": SPACE_ID, 
-                            "parent_id": forest_id, 
-                            "name": tree.get("name", "Unknown"),
-                            "element_type": "TREE", 
-                            "description": tree.get("description", ""), 
-                            "file_path": tree.get("file_path", "")
-                        }).execute()
-                        
-                        if t_res.data:
-                            tree_id = t_res.data[0]['id']
-                            for ring in tree.get("children", []):
-                                supabase.table("Functional").insert({
-                                    "repo_name": REPO_NAME,
-                                    "space_id": SPACE_ID, 
-                                    "parent_id": tree_id, 
-                                    "name": ring.get("name", "Unknown"),
-                                    "element_type": "RING", 
-                                    "description": ring.get("description", ""), 
-                                    "api_method": ring.get("api_method", ""), 
-                                    "api_url": ring.get("api_url", "")
-                                }).execute()
+                try:
+                    f_res = supabase.table("functional_elements").insert({
+                        "space_id": SPACE_ID, 
+                        "name": forest.get("name", "Unknown"), 
+                        "element_type": "FOREST", 
+                        "description": forest.get("description", "")
+                    }).execute()
+                    
+                    if f_res.data:
+                        forest_id = f_res.data[0]['id']
+                        for tree in forest.get("children", []):
+                            t_res = supabase.table("functional_elements").insert({
+                                "space_id": SPACE_ID, 
+                                "parent_id": forest_id, 
+                                "name": tree.get("name", "Unknown"),
+                                "element_type": "TREE", 
+                                "description": tree.get("description", ""), 
+                                "file_path": tree.get("file_path", "")
+                            }).execute()
+                            
+                            if t_res.data:
+                                tree_id = t_res.data[0]['id']
+                                for ring in tree.get("children", []):
+                                    supabase.table("functional_elements").insert({
+                                        "space_id": SPACE_ID, 
+                                        "parent_id": tree_id, 
+                                        "name": ring.get("name", "Unknown"),
+                                        "element_type": "RING", 
+                                        "description": ring.get("description", ""), 
+                                        "api_method": ring.get("api_method", ""), 
+                                        "api_url": ring.get("api_url", "")
+                                    }).execute()
+                except Exception as e:
+                    print(f"  ❌ Functional View 적재 실패: {e}")
             print("  ✅ Functional View 적재 완료!")
         else:
             print("  ⚠️ Functional View 파일 내용을 가져오지 못했습니다.")
@@ -112,12 +112,15 @@ def main():
         iface_content = fetch_file_contents(USERNAME, GITHUB_TOKEN, REPO_NAME, iface_files)
         if iface_content:
             iface_data = analyze_interface_view(REPO_NAME, iface_content)
-            supabase.table("Interface").insert({
-                "repo_name": REPO_NAME,
-                "space_id": SPACE_ID,
-                "interface_view_data": iface_data
-            }).execute()
-            print("  ✅ Interface View 적재 완료!")
+            try:
+                supabase.table("Interface").insert({
+                    "repo_name": REPO_NAME,
+                    "space_id": SPACE_ID,
+                    "interface_view_data": iface_data
+                }).execute()
+                print("  ✅ Interface View 적재 완료!")
+            except Exception as e:
+                print(f"  ⚠️ Interface View 적재 건너뜀 (테이블 확인 필요): {e}")
         else:
             print("  ⚠️ Interface View 파일 내용을 가져오지 못했습니다.")
     else:
@@ -130,12 +133,15 @@ def main():
         data_content = fetch_file_contents(USERNAME, GITHUB_TOKEN, REPO_NAME, data_files)
         if data_content:
             schema_data = analyze_data_view(REPO_NAME, data_content)
-            supabase.table("Data").insert({
-                "repo_name": REPO_NAME,
-                "space_id": SPACE_ID,
-                "analyzed_json": schema_data
-            }).execute()
-            print("  ✅ Data View 적재 완료!")
+            try:
+                supabase.table("Data").insert({
+                    "repo_name": REPO_NAME,
+                    "space_id": SPACE_ID,
+                    "analyzed_json": schema_data
+                }).execute()
+                print("  ✅ Data View 적재 완료!")
+            except Exception as e:
+                print(f"  ⚠️ Data View 적재 건너뜀 (테이블 확인 필요): {e}")
         else:
             print("  ⚠️ Data View 파일 내용을 가져오지 못했습니다.")
     else:
@@ -148,12 +154,15 @@ def main():
         proc_content = fetch_file_contents(USERNAME, GITHUB_TOKEN, REPO_NAME, proc_files)
         if proc_content:
             proc_data = analyze_process_view(REPO_NAME, proc_content)
-            supabase.table("Process").insert({
-                "repo_name": REPO_NAME,
-                "space_id": SPACE_ID,
-                "process_json": proc_data
-            }).execute()
-            print("  ✅ Process View 적재 완료!")
+            try:
+                supabase.table("Process").insert({
+                    "repo_name": REPO_NAME,
+                    "space_id": SPACE_ID,
+                    "process_json": proc_data
+                }).execute()
+                print("  ✅ Process View 적재 완료!")
+            except Exception as e:
+                print(f"  ⚠️ Process View 적재 건너뜀 (테이블 확인 필요): {e}")
         else:
             print("  ⚠️ Process View 파일 내용을 가져오지 못했습니다.")
     else:
@@ -181,7 +190,7 @@ def main():
         try:
             for i in range(0, len(commits_data), 100):
                 chunk = commits_data[i:i+100]
-                supabase.table("CommitHistory").insert(chunk).execute()
+                supabase.table("commit_history").insert(chunk).execute()
             print(f"  ✅ [로직 B] CommitHistory 적재 완료!")
         except Exception as e:
             print(f"  ❌ [로직 B] 적재 실패: {e}")
@@ -190,7 +199,7 @@ def main():
     # 5. [필수 확인] DB 데이터 검증 로직
     # ==========================================
     print("\n🔍 [데이터 검증] Supabase에 데이터가 진짜로 들어갔는지 확인합니다...")
-    check_tables = ["Functional", "Interface", "Data", "Process", "CommitHistory"]
+    check_tables = ["functional_elements", "Interface", "Data", "Process", "commit_history"]
     for table_name in check_tables:
         try:
             response = supabase.table(table_name).select("*", count='exact').limit(1).execute()

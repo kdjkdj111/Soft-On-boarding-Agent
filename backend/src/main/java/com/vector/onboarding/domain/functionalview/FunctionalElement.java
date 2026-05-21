@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(
-    name = "functional_elements",
+    name = "\"Functional\"",
     indexes = {
         @Index(name = "idx_functional_elements_space_id", columnList = "space_id")
     }
@@ -36,6 +36,10 @@ public class FunctionalElement {
     /** 어떤 팀 스페이스 소속인지 (spaces.id 참조) */
     @Column(name = "space_id", nullable = false)
     private Long spaceId;
+
+    /** 레포지토리 이름 */
+    @Column(name = "repo_name")
+    private String repoName;
 
     /**
      * 부모 노드 ID (Self-referencing).
@@ -75,10 +79,11 @@ public class FunctionalElement {
     private LocalDateTime createdAt;
 
     @Builder
-    public FunctionalElement(Long spaceId, Long parentId, String name,
+    public FunctionalElement(Long spaceId, String repoName, Long parentId, String name,
                              ElementType elementType, String description,
                              String filePath, String apiMethod, String apiUrl) {
         this.spaceId = spaceId;
+        this.repoName = repoName;
         this.parentId = parentId;
         this.name = name;
         this.elementType = elementType;

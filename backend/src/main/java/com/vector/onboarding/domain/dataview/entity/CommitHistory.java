@@ -7,7 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "CommitHistory")
+@Table(name = "\"CommitHistory\"")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CommitHistory {

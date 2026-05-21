@@ -9,6 +9,6 @@ public interface CommitHistoryRepository extends JpaRepository<CommitHistory, Lo
     /** 팀 격리: spaceId 기준으로 커밋 목록을 조회합니다. */
     List<CommitHistory> findBySpaceIdOrderByIdDesc(Long spaceId);
 
-    /** 하위 호환: repoName 기준 조회 (레거시 데이터용) */
-    List<CommitHistory> findByRepoName(String repoName);
+    /** repoName 기준 커밋 최신순 조회 */
+    List<CommitHistory> findByRepoNameOrderByCommitDateDesc(String repoName);
 }

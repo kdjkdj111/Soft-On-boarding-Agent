@@ -294,44 +294,20 @@ public class SpaceService {
     public void loadGithubCommitsAsync(Long spaceId, String repoUrl) {
         log.info("비동기 데이터 로드 시작 - SpaceID: {}, Repo: {}", spaceId, repoUrl);
         try {
-            // URL 파싱 (예: https://github.com/vector/onboarding -> owner: vector, repo: onboarding)
-            String urlPath = repoUrl.replace("https://github.com/", "").replace(".git", "");
-            String[] parts = urlPath.split("/");
-            if (parts.length < 2) {
+            String[] parsed = parseGithubUrl(repoUrl);
+            if (parsed == null) {
                 log.error("잘못된 레포지토리 URL 형식입니다: {}", repoUrl);
                 return;
             }
-            String owner = parts[0];
-            String repo = parts[1];
+            String owner = parsed[0];
+            String repo = parsed[1];
 
-            // 1. 로직 B: GitHub Commits API 호출 (최근 100개 커밋 내역 저장)
-            JsonNode commits = githubFileFetchService.fetchCommits(owner, repo);
+            // 커밋 가져오기 로직 제거: AI 파이프라인에서 commit_history에 직접 적재함.
+            // git tree 조회를 위한 latestCommitSha는 DB에서 가장 최근 커밋 조회하여 사용
             String latestCommitSha = "main"; // 기본값
-            
-            if (commits != null && commits.isArray() && commits.size() > 0) {
-                latestCommitSha = commits.get(0).get("sha").asText();
-                List<CommitHistory> commitHistories = new ArrayList<>();
-                
-                for (JsonNode commitNode : commits) {
-                    String sha = commitNode.get("sha").asText();
-                    String message = commitNode.get("commit").get("message").asText();
-                    String author = commitNode.get("commit").get("author").get("name").asText();
-                    String dateStr = commitNode.get("commit").get("author").get("date").asText();
-                    
-                    CommitHistory history = CommitHistory.builder()
-                            .spaceId(spaceId)   // 팀 격리 키
-                            .repoName(repo)
-                            .commitSha(sha)
-                            .message(message)
-                            .commitDate(dateStr)
-                            .author(author)
-                            .build();
-                            
-                    commitHistories.add(history);
-                }
-                // 일괄 저장
-                commitHistoryRepository.saveAll(commitHistories);
-                log.info("최근 100개의 커밋 내역 저장 완료");
+            List<CommitHistory> recentCommits = commitHistoryRepository.findByRepoNameOrderByCommitDateDesc(repo);
+            if (!recentCommits.isEmpty()) {
+                latestCommitSha = recentCommits.get(0).getCommitSha();
             }
 
             // 2. 로직 A: GitHub Git Trees API 호출 및 파일 경로 목록 저장
@@ -382,91 +358,37 @@ public class SpaceService {
         Space space = spaceRepository.findByTeamCode(teamCode)
                 .orElseThrow(() -> new SpaceNotFoundException(teamCode));
 
-        List<CommitHistory> existing = commitHistoryRepository.findBySpaceIdOrderByIdDesc(space.getId());
-
-        // DB에 커밋이 없으면 → repo_url 기반으로 온디맨드 동기화
-        if (existing.isEmpty() && space.getRepoUrl() != null && !space.getRepoUrl().isBlank()) {
-            log.info("[온디맨드 동기화] spaceId={} 커밋 없음. repo_url={} 에서 fetch 시도",
-                    space.getId(), space.getRepoUrl());
-            existing = syncCommitsFromGithub(space);
-        }
-
-        return existing;
-    }
-
-    /**
-     * 특정 팀 코드의 커밋을 GitHub에서 강제 재동기화합니다.
-     * 기존 커밋은 삭제 후 최신 데이터로 교체합니다.
-     * POST /api/spaces/{teamCode}/commits/sync 에서 호출됩니다.
-     */
-    @Transactional
-    public List<CommitHistory> syncCommitsByTeamCode(String teamCode) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-
-        if (space.getRepoUrl() == null || space.getRepoUrl().isBlank()) {
-            log.warn("[재동기화] spaceId={} 에 repo_url 없음. 건너뜁니다.", space.getId());
-            return java.util.Collections.emptyList();
-        }
-
-        // 기존 커밋 삭제 (덮어쓰기)
-        List<CommitHistory> old = commitHistoryRepository.findBySpaceIdOrderByIdDesc(space.getId());
-        if (!old.isEmpty()) {
-            commitHistoryRepository.deleteAll(old);
-            log.info("[재동기화] 기존 커밋 {}건 삭제", old.size());
-        }
-
-        return syncCommitsFromGithub(space);
-    }
-
-    /**
-     * 내부 공통 메서드: Space 엔티티를 받아 GitHub에서 커밋을 fetch하고 저장 후 반환합니다.
-     */
-    private List<CommitHistory> syncCommitsFromGithub(Space space) {
         String repoUrl = space.getRepoUrl();
-        String urlPath = repoUrl.replace("https://github.com/", "").replace(".git", "");
-        String[] parts = urlPath.split("/");
-        if (parts.length < 2) {
+        String[] parsed = parseGithubUrl(repoUrl);
+        if (parsed == null) {
             log.error("잘못된 repo_url 형식: {}", repoUrl);
             return java.util.Collections.emptyList();
         }
-        String owner = parts[0];
-        String repo  = parts[1];
+        String repoName = parsed[1];
 
-        try {
-            com.fasterxml.jackson.databind.JsonNode commits =
-                    githubFileFetchService.fetchCommits(owner, repo);
+        // DB에서 repoName 기준으로 커밋 조회 (최신순)
+        return commitHistoryRepository.findByRepoNameOrderByCommitDateDesc(repoName);
+    }
 
-            if (commits == null || !commits.isArray() || commits.size() == 0) {
-                log.info("[동기화] GitHub 커밋 없음 - owner={}, repo={}", owner, repo);
-                return java.util.Collections.emptyList();
-            }
+    /**
+     * 프론트엔드 동기화 요청 시 더 이상 GitHub API를 찌르지 않고 DB를 조회하여 반환.
+     * (AI 파이프라인 연동 트리거를 원한다면 별도 구현 필요)
+     */
+    @Transactional
+    public List<CommitHistory> syncCommitsByTeamCode(String teamCode) {
+        return getCommitsByTeamCode(teamCode);
+    }
 
-            List<CommitHistory> histories = new ArrayList<>();
-            for (com.fasterxml.jackson.databind.JsonNode node : commits) {
-                String sha     = node.get("sha").asText();
-                String message = node.get("commit").get("message").asText();
-                String author  = node.get("commit").get("author").get("name").asText();
-                String date    = node.get("commit").get("author").get("date").asText();
+    // GitHub API에서 커밋을 긁어오던 syncCommitsFromGithub 메서드 제거
 
-                histories.add(CommitHistory.builder()
-                        .spaceId(space.getId())
-                        .repoName(repo)
-                        .commitSha(sha)
-                        .message(message)
-                        .commitDate(date)
-                        .author(author)
-                        .build());
-            }
-
-            List<CommitHistory> saved = commitHistoryRepository.saveAll(histories);
-            log.info("[동기화] {}건 저장 완료 - spaceId={}", saved.size(), space.getId());
-            return commitHistoryRepository.findBySpaceIdOrderByIdDesc(space.getId());
-
-        } catch (Exception e) {
-            log.error("[동기화] GitHub fetch 실패: {}", e.getMessage(), e);
-            return java.util.Collections.emptyList();
-        }
+    private String[] parseGithubUrl(String repoUrl) {
+        if (repoUrl == null || repoUrl.isBlank()) return null;
+        String urlPath = repoUrl.trim();
+        urlPath = urlPath.replaceAll("\\.git$", "");
+        urlPath = urlPath.replaceAll("/+$", ""); // trailing slashes
+        String[] parts = urlPath.split("/");
+        if (parts.length < 2) return null;
+        return new String[]{ parts[parts.length - 2], parts[parts.length - 1] };
     }
 
     // =====================================================================

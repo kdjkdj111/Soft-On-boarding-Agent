@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { MainLayout } from './components/layout/MainLayout';
-import { FunctionalView } from './pages/FunctionalView';
+import FunctionalView from './pages/FunctionalView';
 import { DataView } from './pages/DataView';
 import { InterfaceView } from './pages/InterfaceView';
 import { ProcessFlowView } from './pages/ProcessFlowView';
@@ -15,6 +15,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+  
+  return <>{children}</>;
+}
+
+function ProtectedTeamRoute({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((state) => state.user);
+  
+  if (!user?.teamCode) {
+    return <Navigate to="/onboarding" replace />;
   }
   
   return <>{children}</>;
@@ -40,7 +50,9 @@ function App() {
           path="/" 
           element={
             <ProtectedRoute>
-              <MainLayout />
+              <ProtectedTeamRoute>
+                <MainLayout />
+              </ProtectedTeamRoute>
             </ProtectedRoute>
           }
         >

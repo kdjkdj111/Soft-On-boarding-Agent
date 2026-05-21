@@ -41,6 +41,7 @@ public class UserProfileResponseDto {
         private String teamCode;
         private String repoUrl;
         private LocalDateTime createdAt;
+        @com.fasterxml.jackson.annotation.JsonProperty("isAdmin")
         private boolean isAdmin;
 
         public TeamInfo(Long spaceId, String teamName, String teamCode, String repoUrl, LocalDateTime createdAt, boolean isAdmin) {

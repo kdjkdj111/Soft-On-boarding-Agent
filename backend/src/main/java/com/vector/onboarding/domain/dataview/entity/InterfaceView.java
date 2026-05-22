@@ -31,11 +31,9 @@ public class InterfaceView {
     @Column(name = "name")
     private String name;
 
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Lob
     @Column(name = "extra_info", columnDefinition = "TEXT")
     private String extraInfo;
 

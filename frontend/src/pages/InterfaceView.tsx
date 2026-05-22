@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Folder, FileCode2, Palette, Box, Search,
   ChevronDown, ChevronRight, BookOpen, GitCommit, GitPullRequest, Clock
 } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
+import { interfaceApi } from '../services/interfaceApi';
+import type { InterfaceViewDto, CommitHistoryDto } from '../services/interfaceApi';
 
 // Custom FigmaIcon inline component to avoid old lucide-react export issues
 const FigmaIcon = ({ className }: { className?: string }) => (
@@ -36,7 +39,7 @@ const ColorSwatch = ({ name, hex, bgClass, borderClass = 'border-gray-200' }: { 
 
   return (
     <div className="space-y-1.5 cursor-pointer group" onClick={handleCopy}>
-      <div className={`h-8 w-full ${bgClass} rounded-[4px] border ${borderClass} relative flex items-center justify-center transition-colors hover:border-gray-300`}>
+      <div className={`h-8 w-full rounded-[4px] border ${borderClass} relative flex items-center justify-center transition-colors hover:border-gray-300`} style={{ backgroundColor: hex }}>
         {copied && <span className="absolute text-[9px] bg-gray-900 text-white px-1.5 py-0.5 rounded shadow">Copied</span>}
       </div>
       <div className="text-[10px] font-mono text-gray-500 flex flex-col leading-tight">
@@ -49,87 +52,151 @@ const ColorSwatch = ({ name, hex, bgClass, borderClass = 'border-gray-200' }: { 
 
 export function InterfaceView() {
   const [searchQuery, setSearchQuery] = useState('');
-  
-  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({
-    dashboard: true,
-    settings: true,
-    auth: true,
-  });
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  const [componentsData, setComponentsData] = useState<InterfaceViewDto[]>([]);
+  const [commitHistory, setCommitHistory] = useState<CommitHistoryDto[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { user } = useAuthStore();
+
+  useEffect(() => {
+    if (user?.spaceId) {
+      setIsLoading(true);
+      Promise.all([
+        interfaceApi.getInterfaceView(user.spaceId).catch(err => { console.error("Interface Error:", err); return []; }),
+        interfaceApi.getCommitHistory(user.spaceId).catch(err => { console.error("Commit Error:", err); return []; })
+      ])
+      .then(([interfaceData, commitData]) => {
+        setComponentsData(interfaceData || []);
+        setCommitHistory(commitData || []);
+      })
+      .finally(() => setIsLoading(false));
+    }
+  }, [user?.spaceId]);
 
   const toggleFolder = (folder: string) => {
     setOpenFolders(prev => ({ ...prev, [folder]: !prev[folder] }));
   };
 
-  const componentsData = [
-    {
-      id: 'button',
-      name: 'Button',
-      ui: (
-        <div className="flex items-center gap-3">
-          <button className="bg-gray-900 text-white px-3 py-1.5 rounded-[4px] font-medium text-xs hover:bg-gray-800 transition-colors shadow-sm">
-            Primary
-          </button>
-          <button className="bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-[4px] font-medium text-xs hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm">
-            Secondary
-          </button>
-        </div>
-      ),
-      code: `interface ButtonProps {\n  variant?: 'primary' | 'secondary' | 'ghost';\n  size?: 'sm' | 'md' | 'lg';\n  disabled?: boolean;\n  children: ReactNode;\n}`
-    },
-    {
-      id: 'input',
-      name: 'Input',
-      ui: (
-        <div className="w-full max-w-[240px] relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Search components..." 
-            className="w-full bg-white border border-gray-300 rounded-[4px] py-1.5 pl-8 pr-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-sm" 
-            readOnly
-          />
-        </div>
-      ),
-      code: `interface InputProps {\n  type?: 'text' | 'password' | 'email';\n  placeholder?: string;\n  icon?: LucideIcon;\n  error?: string;\n}`
-    },
-    {
-      id: 'badge',
-      name: 'Badge',
-      ui: (
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center rounded bg-gray-100 border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-700">
-            Default
-          </span>
-          <span className="inline-flex items-center rounded bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-            Active
-          </span>
-        </div>
-      ),
-      code: `interface BadgeProps {\n  status: 'default' | 'active';\n  label: string;\n  dot?: boolean;\n}`
-    },
-    {
-      id: 'card',
-      name: 'Card',
-      ui: (
-        <div className="bg-white border border-gray-200 rounded-[6px] p-4 w-full max-w-[220px] shadow-sm hover:shadow-md transition-shadow">
-          <h4 className="text-xs font-medium text-gray-900 mb-1">Project Linear</h4>
-          <p className="text-[10px] text-gray-500 leading-relaxed">Streamline your workflow with high-performance tracking.</p>
-        </div>
-      ),
-      code: `interface CardProps {\n  title: string;\n  description?: string;\n  icon?: ReactNode;\n  children?: ReactNode;\n}`
-    }
-  ];
+  // We use the fetched commitHistory from DB instead of hardcoded data.
+  // If empty, show a fallback message in the UI later.
 
-  const gitHistory = [
-    { id: 1, type: 'pr', text: 'PR #24: Button component style update', time: '2 days ago' },
-    { id: 2, type: 'commit', text: 'Update typography tokens (Inter font)', time: '3 days ago' },
-    { id: 3, type: 'pr', text: 'PR #21: Add Input component variations', time: '5 days ago' },
-    { id: 4, type: 'commit', text: 'Refactor folder structure in src/app', time: '1 week ago' },
-  ];
+  // Map componentsData (from DB) into a tree structure for Screen-Code Mapping
+  // Assuming filePath is like "src/components/Button.tsx"
+  const fileTree: Record<string, any> = {};
+  componentsData.forEach(comp => {
+    const parts = (comp.filePath || 'Unknown').split('/');
+    let current = fileTree;
+    parts.forEach((part, index) => {
+      if (!current[part]) {
+        current[part] = index === parts.length - 1 ? { _isFile: true, comp } : {};
+      }
+      current = current[part];
+    });
+  });
+
+  const renderTree = (node: any, path: string = '', level: number = 0) => {
+    return Object.entries(node).map(([key, value]: [string, any]) => {
+      if (key === '_isFile') return null;
+      
+      const currentPath = path ? `${path}/${key}` : key;
+      const isFile = value._isFile;
+
+      if (isFile) {
+        return (
+          <div key={currentPath} className="flex items-center gap-3 relative group" style={{ marginLeft: `${level * 12}px` }}>
+            <span className="absolute -left-5 top-[9px] w-4 h-px bg-gray-200"></span>
+            <FileCode2 className="w-3.5 h-3.5 text-gray-400" />
+            <span className="group-hover:text-gray-900 transition-colors font-medium">{key}</span>
+            <span className="text-[9px] border border-gray-200 px-1.5 py-0.5 rounded text-gray-500 ml-auto flex items-center gap-1 bg-white shadow-sm">
+              {value.comp.elementType}
+            </span>
+          </div>
+        );
+      }
+
+      return (
+        <div key={currentPath} className="flex flex-col relative gap-3" style={{ marginLeft: level > 0 ? `${level * 12}px` : '0px' }}>
+          <div 
+            className="flex items-center gap-2 relative cursor-pointer group"
+            onClick={() => toggleFolder(currentPath)}
+          >
+            {level > 0 && <span className="absolute -left-5 top-[9px] w-4 h-px bg-gray-200"></span>}
+            {openFolders[currentPath] !== false ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+            <Folder className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-colors" />
+            <span className="font-semibold text-gray-600 group-hover:text-gray-900 transition-colors">{key}</span>
+          </div>
+          
+          {openFolders[currentPath] !== false && (
+            <div className="flex flex-col relative before:absolute before:content-[''] before:left-[11px] before:top-0 before:bottom-3 before:w-px before:bg-gray-200 ml-1.5 pl-6 gap-3">
+              {renderTree(value, currentPath, 0)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
 
   const filteredComponents = componentsData.filter(comp => 
-    comp.name.toLowerCase().includes(searchQuery.toLowerCase())
+    comp.elementType !== 'DESIGN_TOKEN' && (comp.name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Parse dynamic design tokens if they exist in the DB
+  const designTokenComponents = componentsData.filter(comp => comp.elementType === 'DESIGN_TOKEN');
+  const hasDynamicTokens = designTokenComponents.length > 0;
+
+  // Helpers to parse token data from extraInfo strings
+  const getParsedSwatches = () => {
+    const swatchToken = designTokenComponents.find(c => (c.name || '').toLowerCase().includes('color') || (c.extraInfo || '').includes('#'));
+    if (swatchToken && swatchToken.extraInfo) {
+      // Parse "Background: #FAFAFA, Surface: #FFFFFF" format
+      return swatchToken.extraInfo.split(',').map(s => {
+        const parts = s.split(':');
+        if (parts.length === 2) {
+          const name = parts[0].trim();
+          const hex = parts[1].trim();
+          return { name, hex };
+        }
+        return null;
+      }).filter(Boolean) as { name: string, hex: string }[];
+    }
+    // Fallback
+    return [
+      { name: "Background", hex: "#FAFAFA" },
+      { name: "Surface", hex: "#FFFFFF" },
+      { name: "Primary Text", hex: "#111827" },
+      { name: "Border", hex: "#E5E7EB" },
+    ];
+  };
+
+  const getParsedTypography = () => {
+    const typoToken = designTokenComponents.find(c => (c.name || '').toLowerCase().includes('typograph'));
+    if (typoToken && typoToken.extraInfo) {
+      // Parse "H1: 2rem (700), Body: 0.875rem (400)" format
+      return typoToken.extraInfo.split(',').map(s => {
+        const parts = s.split(':');
+        if (parts.length === 2) {
+          const style = parts[0].trim();
+          const rest = parts[1].trim();
+          const match = rest.match(/(.+?)\s*\((\d+)\)/);
+          if (match) {
+            return { style, size: match[1].trim(), weight: match[2].trim() };
+          }
+          return { style, size: rest, weight: "400" };
+        }
+        return null;
+      }).filter(Boolean) as { style: string, size: string, weight: string }[];
+    }
+    // Fallback
+    return [
+      { style: "H1", size: "2rem", weight: "700" },
+      { style: "Body", size: "0.875rem", weight: "400" },
+      { style: "Caption", size: "0.75rem", weight: "400" },
+    ];
+  };
+
+  const swatches = getParsedSwatches();
+  const typography = getParsedTypography();
 
   return (
     <div className="min-h-full w-full bg-[#FAFAFA] text-gray-900 p-6 md:p-10 font-sans selection:bg-blue-100 selection:text-blue-900">
@@ -139,11 +206,11 @@ export function InterfaceView() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
           {/* 1. Top-Left: Screen-Code Mapping */}
-          <div className="flex flex-col bg-[#FAFAFA] border border-gray-200 rounded-[6px] overflow-hidden shadow-sm">
+          <div className="flex flex-col bg-[#FAFAFA] border border-gray-200 rounded-[6px] overflow-hidden shadow-sm h-full max-h-[400px]">
             <div className="border-b border-gray-200 px-4 py-3 flex items-center justify-between bg-white">
               <h3 className="text-xs font-semibold flex items-center gap-2 text-gray-800">
                 <Folder className="w-3.5 h-3.5 text-gray-500" />
-                Screen-Code Mapping
+                Screen-Code Mapping (DB)
               </h3>
               <div className="flex items-center gap-2">
                 <button className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-gray-600 bg-[#FAFAFA] border border-gray-200 rounded-[4px] hover:text-gray-900 hover:border-gray-300 transition-colors shadow-sm">
@@ -158,98 +225,15 @@ export function InterfaceView() {
             </div>
             
             <div className="p-5 flex-1 text-[11px] text-gray-500 font-mono flex flex-col gap-4 overflow-y-auto bg-[#FAFAFA]">
-              <div className="flex items-start gap-2">
-                <Folder className="w-3.5 h-3.5 text-gray-500 mt-0.5" />
-                <div className="text-gray-800 font-semibold">src/app</div>
-              </div>
-              
-              <div className="flex flex-col relative before:absolute before:content-[''] before:left-[7px] before:top-0 before:bottom-0 before:w-px before:bg-gray-200 ml-1.5 pl-5 gap-3">
-                <div className="flex items-center gap-3 relative group">
-                  <span className="absolute -left-5 top-[9px] w-4 h-px bg-gray-200"></span>
-                  <FileCode2 className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="group-hover:text-gray-900 transition-colors font-medium">layout.tsx</span>
-                  <span className="text-[9px] border border-gray-200 px-1.5 py-0.5 rounded text-gray-500 ml-auto flex items-center gap-1 bg-white shadow-sm">
-                    Root
-                  </span>
+              {isLoading ? (
+                <div className="text-center py-4">Loading data...</div>
+              ) : componentsData.length > 0 ? (
+                <div className="flex flex-col gap-3">
+                  {renderTree(fileTree)}
                 </div>
-
-                <div className="flex flex-col relative gap-3">
-                  <div 
-                    className="flex items-center gap-2 relative cursor-pointer group"
-                    onClick={() => toggleFolder('dashboard')}
-                  >
-                    <span className="absolute -left-5 top-[9px] w-4 h-px bg-gray-200"></span>
-                    {openFolders.dashboard ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
-                    <Folder className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-colors" />
-                    <span className="font-semibold text-gray-600 group-hover:text-gray-900 transition-colors">(dashboard)</span>
-                  </div>
-                  
-                  {openFolders.dashboard && (
-                    <div className="flex flex-col relative before:absolute before:content-[''] before:left-[11px] before:top-0 before:bottom-3 before:w-px before:bg-gray-200 ml-1.5 pl-6 gap-3">
-                      <div className="flex items-center gap-3 relative group">
-                        <span className="absolute -left-6 top-[9px] w-5 h-px bg-gray-200"></span>
-                        <FileCode2 className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="group-hover:text-gray-900 transition-colors font-medium">page.tsx</span>
-                        <span className="text-[9px] border border-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-auto flex items-center gap-1 bg-white shadow-sm">
-                          /dashboard
-                        </span>
-                      </div>
-                      
-                      <div className="flex flex-col gap-3 relative">
-                        <div 
-                          className="flex items-center gap-2 relative cursor-pointer group"
-                          onClick={() => toggleFolder('settings')}
-                        >
-                          <span className="absolute -left-6 top-[9px] w-5 h-px bg-gray-200"></span>
-                          {openFolders.settings ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
-                          <Folder className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-colors" />
-                          <span className="font-semibold text-gray-600 group-hover:text-gray-900 transition-colors">settings</span>
-                        </div>
-                        
-                        {openFolders.settings && (
-                          <div className="flex flex-col relative ml-2.5 pl-5 gap-3">
-                            <div className="flex items-center gap-3 relative group">
-                              <span className="absolute -left-[20px] -top-[12px] w-px h-5 bg-gray-200"></span>
-                              <span className="absolute -left-[20px] top-[9px] w-4 h-px bg-gray-200"></span>
-                              <FileCode2 className="w-3.5 h-3.5 text-gray-400" />
-                              <span className="group-hover:text-gray-900 transition-colors font-medium">page.tsx</span>
-                              <span className="text-[9px] border border-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-auto flex items-center gap-1 bg-white shadow-sm">
-                                /dashboard/settings
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-col relative gap-3">
-                  <div 
-                    className="flex items-center gap-2 relative cursor-pointer group"
-                    onClick={() => toggleFolder('auth')}
-                  >
-                    <span className="absolute -left-5 top-[9px] w-4 h-px bg-gray-200"></span>
-                    {openFolders.auth ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
-                    <Folder className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-colors" />
-                    <span className="font-semibold text-gray-600 group-hover:text-gray-900 transition-colors">auth</span>
-                  </div>
-                  
-                  {openFolders.auth && (
-                    <div className="flex flex-col relative ml-1.5 pl-6 gap-3">
-                      <div className="flex items-center gap-3 relative group">
-                        <span className="absolute -left-[19px] -top-[12px] w-px h-5 bg-gray-200"></span>
-                        <span className="absolute -left-[19px] top-[9px] w-4 h-px bg-gray-200"></span>
-                        <FileCode2 className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="group-hover:text-gray-900 transition-colors font-medium">login/page.tsx</span>
-                        <span className="text-[9px] border border-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-auto flex items-center gap-1 bg-white shadow-sm">
-                          /auth/login
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              ) : (
+                <div className="text-center py-4">No file structure available.</div>
+              )}
             </div>
           </div>
 
@@ -267,10 +251,18 @@ export function InterfaceView() {
               <div>
                 <h4 className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-2.5">Colors</h4>
                 <div className="grid grid-cols-4 gap-3">
-                  <ColorSwatch name="Background" hex="#FAFAFA" bgClass="bg-[#FAFAFA]" />
-                  <ColorSwatch name="Surface" hex="#FFFFFF" bgClass="bg-white" borderClass="border-gray-200" />
-                  <ColorSwatch name="Primary Text" hex="#111827" bgClass="bg-gray-900" borderClass="border-gray-900" />
-                  <ColorSwatch name="Border" hex="#E5E7EB" bgClass="bg-gray-200" borderClass="border-gray-300" />
+                  {swatches.map((swatch, idx) => {
+                    const isDark = parseInt(swatch.hex.replace('#', ''), 16) < 0xffffff / 2; // Rough brightness check
+                    return (
+                      <ColorSwatch 
+                        key={idx} 
+                        name={swatch.name} 
+                        hex={swatch.hex} 
+                        bgClass="" 
+                        borderClass="border-gray-200" 
+                      />
+                    );
+                  })}
                 </div>
               </div>
 
@@ -286,21 +278,13 @@ export function InterfaceView() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-gray-700 bg-[#FAFAFA]">
-                      <tr>
-                        <td className="px-3 py-2 font-bold text-gray-900">H1</td>
-                        <td className="px-3 py-2 font-mono text-[9px] text-gray-500">2rem</td>
-                        <td className="px-3 py-2">700</td>
-                      </tr>
-                      <tr>
-                        <td className="px-3 py-2 text-gray-800 font-medium">Body</td>
-                        <td className="px-3 py-2 font-mono text-[9px] text-gray-500">0.875rem</td>
-                        <td className="px-3 py-2">400</td>
-                      </tr>
-                      <tr>
-                        <td className="px-3 py-2 text-gray-500">Caption</td>
-                        <td className="px-3 py-2 font-mono text-[9px] text-gray-400">0.75rem</td>
-                        <td className="px-3 py-2">400</td>
-                      </tr>
+                      {typography.map((typo, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2 font-medium text-gray-800">{typo.style}</td>
+                          <td className="px-3 py-2 font-mono text-[9px] text-gray-500">{typo.size}</td>
+                          <td className="px-3 py-2">{typo.weight}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -314,26 +298,26 @@ export function InterfaceView() {
                 UI Change History
               </h3>
             </div>
-            <div className="p-4 flex-1 flex flex-col gap-3 overflow-y-auto bg-[#FAFAFA]">
-              {gitHistory.map((item) => (
-                <div key={item.id} className="flex gap-3 items-start group cursor-pointer">
-                  <div className="mt-0.5">
-                    {item.type === 'pr' ? (
-                      <GitPullRequest className="w-3.5 h-3.5 text-blue-500 opacity-80 group-hover:opacity-100 transition-opacity" />
-                    ) : (
+            <div className="p-4 flex-1 flex flex-col gap-3 overflow-y-auto bg-[#FAFAFA] max-h-[150px]">
+              {commitHistory.length > 0 ? (
+                commitHistory.map((commit) => (
+                  <div key={commit.id} className="flex gap-3 items-start group cursor-pointer" title={commit.message}>
+                    <div className="mt-0.5">
                       <GitCommit className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-colors" />
-                    )}
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[11px] text-gray-700 group-hover:text-gray-900 transition-colors leading-tight font-medium line-clamp-1">
+                        {commit.message}
+                      </span>
+                      <span className="text-[9px] text-gray-500 font-mono">
+                        {commit.author} • {commit.commitDate}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-gray-700 group-hover:text-gray-900 transition-colors leading-tight font-medium">
-                      {item.text}
-                    </span>
-                    <span className="text-[9px] text-gray-500 font-mono">
-                      {item.time}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <div className="text-center text-[10px] text-gray-500 py-4">No commit history available.</div>
+              )}
             </div>
           </div>
         </div>
@@ -343,7 +327,7 @@ export function InterfaceView() {
           <div className="border-b border-gray-200 px-4 py-3 flex items-center justify-between bg-white">
             <h3 className="text-xs font-semibold flex items-center gap-2 text-gray-800">
               <Box className="w-3.5 h-3.5 text-gray-500" />
-              Blueprint Catalog
+              Blueprint Catalog (DB)
             </h3>
             
             <div className="flex items-center gap-3">
@@ -361,35 +345,36 @@ export function InterfaceView() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-px bg-gray-200">
-            {filteredComponents.length > 0 ? (
+            {isLoading ? (
+               <div className="col-span-full p-10 text-center text-gray-500 text-[11px] flex flex-col items-center bg-[#FAFAFA]">
+                 Loading...
+               </div>
+            ) : filteredComponents.length > 0 ? (
               filteredComponents.map((comp) => (
                 <div key={comp.id} className="flex flex-col bg-[#FAFAFA]">
                   <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wide">{comp.name}</span>
+                    <span className="text-[9px] text-gray-500">{comp.elementType}</span>
                   </div>
                   <div className="flex flex-col sm:flex-row h-full">
-                    {/* Preview */}
-                    <div className="w-full sm:w-1/2 p-6 flex items-center justify-center min-h-[140px] border-b sm:border-b-0 sm:border-r border-gray-200 bg-[#FAFAFA]">
-                      {comp.ui}
+                    {/* Description/Preview (Fallback since no true UI rendering) */}
+                    <div className="w-full sm:w-1/2 p-6 flex flex-col min-h-[140px] border-b sm:border-b-0 sm:border-r border-gray-200 bg-white">
+                       <h4 className="font-semibold text-xs text-gray-800 mb-2">Description</h4>
+                       <p className="text-[11px] text-gray-600 whitespace-pre-wrap flex-1">{comp.description || 'No description available.'}</p>
                     </div>
-                    {/* Code */}
-                    <div className="w-full sm:w-1/2 p-4 bg-gray-50 border-t border-gray-100 sm:border-t-0 text-[10px] font-mono text-gray-600 overflow-x-auto min-h-[140px] flex items-center relative group">
+                    {/* Code (extraInfo) */}
+                    <div className="w-full sm:w-1/2 p-4 bg-gray-50 border-t border-gray-100 sm:border-t-0 text-[10px] font-mono text-gray-600 overflow-x-auto min-h-[140px] flex items-start relative group">
                       <button 
                         className="absolute top-2 right-2 text-gray-500 hover:text-gray-900 bg-white hover:bg-gray-100 px-1.5 py-0.5 rounded-[4px] text-[9px] opacity-0 group-hover:opacity-100 transition-all border border-gray-200 shadow-sm"
-                        onClick={() => navigator.clipboard.writeText(comp.code)}
+                        onClick={() => navigator.clipboard.writeText(comp.extraInfo || '')}
                       >
                         Copy
                       </button>
-                      <pre className="leading-relaxed"><code>
-                        <span className="text-blue-600 font-semibold">interface</span> <span className="text-gray-900 font-bold">{comp.name}Props</span> {'{\n'}
-                        {comp.code.split('\n').slice(1, -1).map((line, i) => (
-                          <div key={i}>
-                            <span className="text-gray-500">{line.split(':')[0]}</span>:
-                            <span className="text-gray-700">{line.split(':')[1]}</span>
-                          </div>
-                        ))}
-                        {'}'}
-                      </code></pre>
+                      <pre className="leading-relaxed whitespace-pre-wrap break-all w-full h-full overflow-y-auto max-h-[250px]">
+                        <code>
+                          {comp.extraInfo ? comp.extraInfo : 'No interface/code defined.'}
+                        </code>
+                      </pre>
                     </div>
                   </div>
                 </div>

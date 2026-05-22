@@ -7,6 +7,7 @@ import com.vector.onboarding.domain.user.User;
 import com.vector.onboarding.domain.user.UserRepository;
 import com.vector.onboarding.global.exception.AccessDeniedException;
 import com.vector.onboarding.global.exception.SpaceNotFoundException;
+import com.vector.onboarding.global.exception.UserNotFoundException;
 import com.vector.onboarding.infrastructure.github.GithubAnalysisService;
 import com.vector.onboarding.domain.dataview.repository.GithubFileRepository;
 import com.vector.onboarding.domain.dataview.entity.GithubFileInfo;
@@ -51,7 +52,7 @@ public class SpaceService {
      */
     public CreateSpaceResponseDto createSpace(Long userId, CreateSpaceRequestDto dto) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("User not found: " + userId));
 
         String teamCode = generateUniqueTeamCode();
 
@@ -92,7 +93,7 @@ public class SpaceService {
                 .orElseThrow(() -> new SpaceNotFoundException(teamCode));
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("User not found: " + userId));
 
         if (spaceMemberRepository.existsBySpaceIdAndUserId(space.getId(), userId)) {
             throw new IllegalArgumentException("이미 참여한 팀 스페이스입니다.");
@@ -119,7 +120,7 @@ public class SpaceService {
      */
     public void leaveSpace(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("User not found: " + userId));
 
         String teamCode = user.getTeamCode();
         if (teamCode == null || teamCode.isEmpty()) {
@@ -229,7 +230,7 @@ public class SpaceService {
 
         // SpaceMember 삭제 + User teamCode 초기화
         User targetUser = userRepository.findById(targetUserId)
-                .orElseThrow(() -> new RuntimeException("User not found: " + targetUserId));
+                .orElseThrow(() -> new UserNotFoundException("User not found: " + targetUserId));
         spaceMemberRepository.delete(targetMember);
         targetUser.updateTeamCode(null);
 

@@ -4,11 +4,10 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "\"Process\"")
+@Table(name = "process")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ProcessView {
@@ -23,7 +22,27 @@ public class ProcessView {
     @Column(name = "repo_name")
     private String repoName;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "process_json", columnDefinition = "jsonb")
-    private Object processJson;
+    @Column(name = "file_path")
+    private String filePath;
+
+    @Column(name = "element_type", length = 50)
+    private String elementType;
+
+    @Column(name = "name")
+    private String name;
+
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Lob
+    @Column(name = "tech_stack", columnDefinition = "TEXT")
+    private String techStack;
+
+    @Lob
+    @Column(name = "env_vars", columnDefinition = "TEXT")
+    private String envVars;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 }

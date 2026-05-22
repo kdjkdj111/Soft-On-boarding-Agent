@@ -1,6 +1,7 @@
 package com.vector.onboarding.domain.user;
 
 import com.vector.onboarding.domain.user.dto.UserResponseDto;
+import com.vector.onboarding.global.exception.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,7 +26,7 @@ public class UserController {
 
         Long userId = Long.valueOf(userDetails.getUsername());
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         return ResponseEntity.ok(new UserResponseDto(user));
     }

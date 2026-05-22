@@ -6,6 +6,7 @@ import com.vector.onboarding.domain.space.SpaceMemberRole;
 import com.vector.onboarding.domain.space.SpaceMemberRepository;
 import com.vector.onboarding.domain.space.SpaceRepository;
 import com.vector.onboarding.domain.user.dto.UserProfileResponseDto;
+import com.vector.onboarding.global.exception.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,7 +22,7 @@ public class UserService {
 
     public UserProfileResponseDto getUserProfile(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("User not found: " + userId));
 
         Space space = null;
         String jobRole = null;

@@ -1,14 +1,21 @@
 package com.vector.onboarding.domain.functionalview;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.vector.onboarding.domain.dataview.service.GithubFileFetchService;
+import com.vector.onboarding.domain.functionalview.dto.CommitSummaryDto;
 import com.vector.onboarding.domain.functionalview.dto.FunctionalViewEdgeDto;
 import com.vector.onboarding.domain.functionalview.dto.FunctionalViewNodeDto;
 import com.vector.onboarding.domain.functionalview.dto.FunctionalViewResponseDto;
+import com.vector.onboarding.domain.space.Space;
+import com.vector.onboarding.domain.space.SpaceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +31,8 @@ import java.util.Map;
 public class FunctionalViewService {
 
     private final FunctionalElementRepository functionalElementRepository;
+    private final SpaceRepository spaceRepository;
+    private final GithubFileFetchService githubFileFetchService;
 
     /**
      * 특정 스페이스의 Functional View 데이터를 React Flow 규격으로 반환합니다.
@@ -126,5 +135,87 @@ public class FunctionalViewService {
         }
 
         return data;
+    }
+
+    /**
+     * 특정 FunctionalElement(노드)와 연관된 커밋 히스토리를 반환합니다.
+     *
+     * <p>동작 방식:
+     * <ol>
+     *   <li>elementId로 FunctionalElement 조회 → filePath / repoName 추출</li>
+     *   <li>spaceId로 Space 조회 → repoUrl에서 owner 파싱</li>
+     *   <li>GitHub API ({@code ?path=filePath}) 호출 → 해당 파일 수정 커밋만 필터링</li>
+     *   <li>결과를 {@code functionalCommits} 캐시에 저장 (key = elementId)</li>
+     * </ol>
+     *
+     * <p>FOREST 노드처럼 filePath가 null인 경우 빈 리스트를 반환합니다.
+     *
+     * @param spaceId   멤버십 검증에 사용된 스페이스 ID
+     * @param elementId 커밋 히스토리를 조회할 FunctionalElement ID
+     * @return 해당 파일을 수정한 커밋 목록 (최대 30개)
+     */
+    @Cacheable(value = "functionalCommits", key = "#elementId")
+    public List<CommitSummaryDto> getCommitsForElement(Long spaceId, Long elementId) {
+        // 1. FunctionalElement 조회
+        FunctionalElement element = functionalElementRepository.findById(elementId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 FunctionalElement입니다: " + elementId));
+
+        // 2. filePath가 없는 노드(FOREST 등)는 빈 리스트 반환
+        String filePath = element.getFilePath();
+        if (filePath == null || filePath.isBlank()) {
+            log.info("elementId={}는 filePath가 없어 커밋 조회를 건너뜁니다. (elementType={})",
+                    elementId, element.getElementType());
+            return Collections.emptyList();
+        }
+
+        // 3. Space에서 repoUrl 조회 → owner / repo 파싱
+        Space space = spaceRepository.findById(spaceId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 Space입니다: " + spaceId));
+
+        String repoUrl = space.getRepoUrl();
+        if (repoUrl == null || repoUrl.isBlank()) {
+            log.warn("spaceId={}에 repoUrl이 없습니다.", spaceId);
+            return Collections.emptyList();
+        }
+
+        String urlPath = repoUrl.replace("https://github.com/", "").replace(".git", "");
+        String[] parts = urlPath.split("/");
+        if (parts.length < 2) {
+            log.error("잘못된 repoUrl 형식: {}", repoUrl);
+            return Collections.emptyList();
+        }
+        String owner = parts[0];
+        String repo = parts[1];
+
+        // 4. GitHub API 호출 (해당 파일을 수정한 커밋만 필터링)
+        log.info("GitHub API 호출: owner={}, repo={}, path={}", owner, repo, filePath);
+        JsonNode commits = githubFileFetchService.fetchCommitsByFilePath(owner, repo, filePath);
+
+        if (commits == null || !commits.isArray() || commits.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 5. JsonNode → CommitSummaryDto 변환
+        List<CommitSummaryDto> result = new ArrayList<>();
+        for (JsonNode node : commits) {
+            String sha = node.path("sha").asText("");
+            String message = node.path("commit").path("message").asText("");
+            // 커밋 메시지 첫 줄만 (멀티라인 메시지 처리)
+            String shortMessage = message.contains("\n") ? message.split("\n")[0] : message;
+            String author = node.path("commit").path("author").path("name").asText("");
+            String date = node.path("commit").path("author").path("date").asText("");
+            String htmlUrl = node.path("html_url").asText(null);
+
+            result.add(CommitSummaryDto.builder()
+                    .sha(sha.length() > 7 ? sha.substring(0, 7) : sha)
+                    .message(shortMessage)
+                    .author(author)
+                    .date(date)
+                    .url(htmlUrl)
+                    .build());
+        }
+
+        log.info("elementId={}의 커밋 {}건 조회 완료 (캐시 저장).", elementId, result.size());
+        return result;
     }
 }

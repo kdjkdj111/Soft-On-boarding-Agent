@@ -4,12 +4,10 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-import java.util.Map;
+import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "\"Data\"")
+@Table(name = "data")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DataView {
@@ -24,7 +22,9 @@ public class DataView {
     @Column(name = "repo_name")
     private String repoName;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "analyzed_json", columnDefinition = "jsonb")
-    private Map<String, Object> analyzedJson;
+    @Column(name = "file_path")
+    private String filePath;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 }

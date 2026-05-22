@@ -1,5 +1,6 @@
 package com.vector.onboarding.domain.functionalview;
 
+import com.vector.onboarding.domain.functionalview.dto.CommitSummaryDto;
 import com.vector.onboarding.domain.functionalview.dto.FunctionalElementSaveRequestDto;
 import com.vector.onboarding.domain.functionalview.dto.FunctionalViewResponseDto;
 import com.vector.onboarding.domain.space.SpaceService;
@@ -14,8 +15,9 @@ import java.util.List;
 /**
  * Functional View API 컨트롤러.
  *
- * GET  /api/spaces/{spaceId}/functional-view      → 프론트엔드용 React Flow 데이터 조회
- * POST /api/spaces/{spaceId}/functional-elements  → AI 파이프라인 분석 결과 적재
+ * GET  /api/spaces/{spaceId}/functional-view                          → 프론트엔드용 React Flow 데이터 조회
+ * GET  /api/spaces/{spaceId}/functional-elements/{elementId}/commits  → 노드 클릭 시 파일별 커밋 히스토리 조회
+ * POST /api/spaces/{spaceId}/functional-elements                      → AI 파이프라인 분석 결과 적재
  */
 @RestController
 @RequestMapping("/api/spaces/{spaceId}")
@@ -40,10 +42,36 @@ public class FunctionalViewController {
             @PathVariable Long spaceId) {
 
         Long requestUserId = Long.valueOf(userDetails.getUsername());
-        spaceService.checkSpaceMembership(requestUserId, spaceId); // 멤버십 검증 → 비멤버 403
+        spaceService.checkSpaceMembership(requestUserId, spaceId);
 
         FunctionalViewResponseDto response = functionalViewService.getFunctionalView(spaceId);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 특정 노드(FunctionalElement)와 연관된 커밋 히스토리를 반환합니다.
+     * 프론트엔드에서 노드를 클릭했을 때 호출됩니다.
+     *
+     * <p>동작: GitHub API의 {@code ?path=} 파라미터로 해당 파일만 수정한 커밋을 필터링합니다.
+     * 결과는 서버 메모리에 10분간 캐싱되므로 동일 노드 재클릭 시 API 재호출이 발생하지 않습니다.
+     *
+     * <p>FOREST 노드처럼 filePath가 없는 경우 빈 배열을 반환합니다.
+     *
+     * @param spaceId   멤버십 검증용 스페이스 ID
+     * @param elementId 커밋 히스토리를 조회할 노드 ID
+     * @return 해당 파일을 수정한 커밋 목록 (최대 30개)
+     */
+    @GetMapping("/functional-elements/{elementId}/commits")
+    public ResponseEntity<List<CommitSummaryDto>> getCommitsForElement(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long spaceId,
+            @PathVariable Long elementId) {
+
+        Long requestUserId = Long.valueOf(userDetails.getUsername());
+        spaceService.checkSpaceMembership(requestUserId, spaceId);
+
+        List<CommitSummaryDto> commits = functionalViewService.getCommitsForElement(spaceId, elementId);
+        return ResponseEntity.ok(commits);
     }
 
     /**
@@ -61,3 +89,4 @@ public class FunctionalViewController {
         return ResponseEntity.ok().build();
     }
 }
+

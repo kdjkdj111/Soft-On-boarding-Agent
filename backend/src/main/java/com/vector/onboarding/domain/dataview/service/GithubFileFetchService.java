@@ -55,6 +55,27 @@ public class GithubFileFetchService {
     }
 
     /**
+     * GitHub Commits API 호출 - 특정 파일을 수정한 커밋만 필터링합니다.
+     * GitHub API의 ?path= 파라미터를 활용하여 서버 측에서 직접 필터링합니다.
+     * 결과는 FunctionalViewService에서 @Cacheable로 캐싱되므로 반복 호출이 발생하지 않습니다.
+     *
+     * @param owner    레포지토리 소유자 (예: "octocat")
+     * @param repo     레포지토리 이름 (예: "hello-world")
+     * @param filePath 필터링할 파일 경로 (예: "src/main/java/.../UserService.java")
+     * @return 해당 파일을 수정한 커밋 목록 JsonNode
+     */
+    public JsonNode fetchCommitsByFilePath(String owner, String repo, String filePath) {
+        log.info("Fetching commits for {}/{} filtered by path: {}", owner, repo, filePath);
+        return webClient.get()
+                .uri("/repos/{owner}/{repo}/commits?path={filePath}&per_page=30",
+                        owner, repo, filePath)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .onErrorReturn(com.fasterxml.jackson.databind.node.NullNode.getInstance())
+                .block();
+    }
+
+    /**
      * GitHub API 호출하여 파일 내용을 가져옵니다. (DataViewService 연동용)
      */
     public String fetchFileContent(String repositoryUrl, String filePath) {

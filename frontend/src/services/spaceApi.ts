@@ -1,15 +1,4 @@
-import { useAuthStore } from '../store/authStore';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
-
-// 공통 Fetch 옵션 생성기 (JWT 포함)
-const getAuthHeaders = () => {
-  const token = useAuthStore.getState().token;
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
+import { apiFetch } from './apiClient';
 
 export interface CreateSpaceRequest {
   name: string;
@@ -36,15 +25,35 @@ export interface CreateSpaceResponse {
 }
 
 
+// ---- Functional View DTO ----
+export interface FunctionalViewNodeDto {
+  id: string;
+  type: string; // 'forestNode', 'treeNode', 'ringNode'
+  parentId?: string | null;
+  data: Record<string, any>;
+  position: { x: number; y: number };
+}
+
+export interface FunctionalViewEdgeDto {
+  id: string;
+  source: string;
+  target: string;
+  animated: boolean;
+}
+
+export interface FunctionalViewResponseDto {
+  nodes: FunctionalViewNodeDto[];
+  edges: FunctionalViewEdgeDto[];
+}
+
 export const spaceApi = {
   // ======================================================================
   // Space
   // ======================================================================
 
   createSpace: async (data: CreateSpaceRequest): Promise<CreateSpaceResponse> => {
-    const response = await fetch(`${API_BASE_URL}/api/spaces`, {
+    const response = await apiFetch(`/api/spaces`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
 
@@ -57,9 +66,8 @@ export const spaceApi = {
   },
 
   joinSpace: async (teamCode: string, jobRole: string): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/api/spaces/join`, {
+    const response = await apiFetch(`/api/spaces/join`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ teamCode, jobRole }),
     });
 
@@ -70,9 +78,8 @@ export const spaceApi = {
   },
 
   leaveSpace: async (): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/api/spaces/leave`, {
+    const response = await apiFetch(`/api/spaces/leave`, {
       method: 'POST',
-      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -83,13 +90,29 @@ export const spaceApi = {
 
 
   // ======================================================================
+  // Functional View — AI 파이프라인 분석 데이터 조회
+  // ======================================================================
+
+  getFunctionalView: async (spaceId: number): Promise<FunctionalViewResponseDto> => {
+    const response = await apiFetch(`/api/spaces/${spaceId}/functional-view`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Functional View 데이터를 불러오는데 실패했습니다.');
+    }
+
+    return response.json();
+  },
+
+  // ======================================================================
   // Members — 멤버 관리
   // ======================================================================
 
   getMembers: async (spaceId: number): Promise<MemberResponse[]> => {
-    const response = await fetch(`${API_BASE_URL}/api/spaces/${spaceId}/members`, {
+    const response = await apiFetch(`/api/spaces/${spaceId}/members`, {
       method: 'GET',
-      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -101,9 +124,8 @@ export const spaceApi = {
   },
 
   assignAdmin: async (spaceId: number, userId: number): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/api/spaces/${spaceId}/members/${userId}/assign-admin`, {
+    const response = await apiFetch(`/api/spaces/${spaceId}/members/${userId}/assign-admin`, {
       method: 'PATCH',
-      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -113,9 +135,8 @@ export const spaceApi = {
   },
 
   kickMember: async (spaceId: number, userId: number): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/api/spaces/${spaceId}/members/${userId}/kick`, {
+    const response = await apiFetch(`/api/spaces/${spaceId}/members/${userId}/kick`, {
       method: 'DELETE',
-      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {

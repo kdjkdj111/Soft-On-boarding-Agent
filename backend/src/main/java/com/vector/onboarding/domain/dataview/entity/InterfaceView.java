@@ -4,12 +4,10 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-import java.util.Map;
+import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "\"Interface\"")
+@Table(name = "interface")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class InterfaceView {
@@ -24,7 +22,23 @@ public class InterfaceView {
     @Column(name = "repo_name")
     private String repoName;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "interface_view_data", columnDefinition = "jsonb")
-    private Map<String, Object> interfaceViewData;
+    @Column(name = "file_path")
+    private String filePath;
+
+    @Column(name = "element_type", length = 50)
+    private String elementType;
+
+    @Column(name = "name")
+    private String name;
+
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Lob
+    @Column(name = "extra_info", columnDefinition = "TEXT")
+    private String extraInfo;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 }

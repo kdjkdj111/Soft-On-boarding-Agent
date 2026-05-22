@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(
-    name = "\"Functional\"",
+    name = "functional",
     indexes = {
         @Index(name = "idx_functional_space_id", columnList = "space_id")
     }
@@ -58,7 +58,6 @@ public class FunctionalElement {
     private ElementType elementType;
 
     /** AI가 요약한 로직 해설 */
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String description;
 

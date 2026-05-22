@@ -1,15 +1,17 @@
 spring:
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=10m
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:onboarding}?prepareThreshold=0
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:postgres}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
     driver-class-name: org.postgresql.Driver
   
   jpa:
     hibernate:
       ddl-auto: update
-      naming:
-        physical-strategy: com.vector.onboarding.global.config.CustomPhysicalNamingStrategy
     show-sql: true
     properties:
       hibernate:
@@ -21,8 +23,8 @@ spring:
       client:
         registration:
           github:
-            client-id: ${GITHUB_CLIENT_ID:dummy-id}
-            client-secret: ${GITHUB_CLIENT_SECRET:dummy-secret}
+            client-id: ${GITHUB_CLIENT_ID:}
+            client-secret: ${GITHUB_CLIENT_SECRET:}
             scope:
               - read:user
               - user:email
@@ -33,10 +35,10 @@ app:
     api-url: https://api.github.com
     system-token: ${GITHUB_SYSTEM_TOKEN:}
   llm:
-    api-url: ${LLM_API_URL:}
-    api-key: ${LLM_API_KEY:}
+    api-url: 
+    api-key: 
   oauth2:
     authorized-redirect-uris: http://localhost:5173/login
   jwt:
-    secret: ${JWT_SECRET:8f2a9c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6A7B8C9D0E1F2G3H4I5J}
-    expiration-time: 86400000 # 24 hours
+    secret: ${JWT_SECRET:YOUR_JWT_SECRET_HERE}
+    expiration-time: 86400000

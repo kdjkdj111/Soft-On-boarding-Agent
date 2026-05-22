@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { spaceApi } from '../services/spaceApi';
-import type { BoardTaskDto, CommitHistoryDto } from '../services/spaceApi';
-import { useAuthStore } from '../store/authStore';
+import { flowviewApi } from './service/flowviewApi';
+import type { BoardTaskDto, CommitHistoryDto } from './dto/flowviewDto';
+import { useAuthStore } from '../../store/authStore';
 import {
     CheckCircle2,
     Circle,
@@ -293,11 +293,11 @@ export function ProcessFlowView() {
             if (forceSync) {
                 // 수동 재동기화 버튼
                 setIsSyncing(true);
-                data = await spaceApi.syncCommits(code);
+                data = await flowviewApi.syncCommits(code);
                 setIsSyncing(false);
             } else {
                 // 1차: DB 조회 (백엔드가 비어있으면 온디맨드 sync 후 반환)
-                data = await spaceApi.getCommits(code);
+                data = await flowviewApi.getCommits(code);
             }
 
             const majors = filterMajorCommits(data).reverse();
@@ -321,7 +321,7 @@ export function ProcessFlowView() {
         (async () => {
             setIsTaskLoading(true);
             try {
-                const data = await spaceApi.getTasks(teamCode);
+                const data = await flowviewApi.getTasks(teamCode);
                 setTasks(data);
             } catch (e) {
                 console.error('Tasks load failed:', e);
@@ -336,7 +336,7 @@ export function ProcessFlowView() {
         if (!teamCode || !newTaskText.trim()) return;
         setIsAdding(true);
         try {
-            const created = await spaceApi.createTask(teamCode, newTaskText.trim());
+            const created = await flowviewApi.createTask(teamCode, newTaskText.trim());
             setTasks(prev => [created, ...prev]);
             setNewTaskText('');
             inputRef.current?.focus();
@@ -354,7 +354,7 @@ export function ProcessFlowView() {
     const handleCheck = async (taskId: number) => {
         if (!teamCode) return;
         try {
-            const updated = await spaceApi.updateTaskStatus(teamCode, taskId, 'IN_PROGRESS');
+            const updated = await flowviewApi.updateTaskStatus(teamCode, taskId, 'IN_PROGRESS');
             setTasks(prev => prev.map(t => (t.id === taskId ? updated : t)));
         } catch (e) {
             console.error('Status update failed:', e);
@@ -363,7 +363,7 @@ export function ProcessFlowView() {
 
     const handleDelete = async (taskId: number) => {
         try {
-            await spaceApi.deleteTask(taskId);
+            await flowviewApi.deleteTask(taskId);
             setTasks(prev => prev.filter(t => t.id !== taskId));
         } catch (e) {
             console.error('Delete failed:', e);

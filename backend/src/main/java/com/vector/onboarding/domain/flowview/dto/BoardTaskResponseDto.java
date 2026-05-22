@@ -1,7 +1,7 @@
-package com.vector.onboarding.domain.space.dto;
+package com.vector.onboarding.domain.flowview.dto;
 
-import com.vector.onboarding.domain.space.BoardTask;
-import com.vector.onboarding.domain.space.BoardTaskStatus;
+import com.vector.onboarding.domain.flowview.entity.BoardTask;
+import com.vector.onboarding.domain.flowview.entity.BoardTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

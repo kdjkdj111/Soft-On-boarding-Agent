@@ -5,7 +5,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { FunctionalView } from './pages/FunctionalView';
 import { DataView } from './pages/DataView';
 import { InterfaceView } from './pages/InterfaceView';
-import { ProcessFlowView } from './pages/ProcessFlowView';
+import { ProcessFlowView } from './pages/flowview/ProcessFlowView';
 import { QAView } from './pages/QAView';
 import { SettingsView } from './pages/SettingsView';
 import { MemberManagementView } from './pages/MemberManagementView';

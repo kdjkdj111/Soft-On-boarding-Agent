@@ -1,4 +1,4 @@
-package com.vector.onboarding.domain.space;
+package com.vector.onboarding.domain.flowview.entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;

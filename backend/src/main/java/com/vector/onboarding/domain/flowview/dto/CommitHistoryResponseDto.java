@@ -1,10 +1,10 @@
-package com.vector.onboarding.domain.space.dto;
+package com.vector.onboarding.domain.flowview.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import com.vector.onboarding.domain.dataview.entity.CommitHistory;
+import com.vector.onboarding.domain.flowview.entity.CommitHistory;
 
 @Data
 @Builder

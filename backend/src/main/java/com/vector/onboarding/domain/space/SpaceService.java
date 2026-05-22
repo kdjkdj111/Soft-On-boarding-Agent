@@ -2,7 +2,6 @@ package com.vector.onboarding.domain.space;
 
 import com.vector.onboarding.domain.space.dto.CreateSpaceRequestDto;
 import com.vector.onboarding.domain.space.dto.CreateSpaceResponseDto;
-import com.vector.onboarding.domain.space.dto.CreateBoardTaskRequestDto;
 import com.vector.onboarding.domain.space.dto.MemberResponseDto;
 import com.vector.onboarding.domain.user.User;
 import com.vector.onboarding.domain.user.UserRepository;
@@ -10,9 +9,7 @@ import com.vector.onboarding.global.exception.AccessDeniedException;
 import com.vector.onboarding.global.exception.SpaceNotFoundException;
 import com.vector.onboarding.infrastructure.github.GithubAnalysisService;
 import com.vector.onboarding.domain.dataview.repository.GithubFileRepository;
-import com.vector.onboarding.domain.dataview.repository.CommitHistoryRepository;
 import com.vector.onboarding.domain.dataview.entity.GithubFileInfo;
-import com.vector.onboarding.domain.dataview.entity.CommitHistory;
 import com.vector.onboarding.domain.dataview.service.GithubFileFetchService;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
@@ -41,8 +38,6 @@ public class SpaceService {
     private final GithubAnalysisService githubAnalysisService;
     private final GithubFileFetchService githubFileFetchService;
     private final GithubFileRepository githubFileRepository;
-    private final CommitHistoryRepository commitHistoryRepository;
-    private final BoardTaskRepository boardTaskRepository;
 
     private static final int TEAM_CODE_LENGTH = 8;
     private static final String TEAM_CODE_CHARS =
@@ -283,6 +278,16 @@ public class SpaceService {
         return sb.toString();
     }
 
+    private String[] parseGithubUrl(String repoUrl) {
+        if (repoUrl == null || repoUrl.isBlank()) return null;
+        String urlPath = repoUrl.trim();
+        urlPath = urlPath.replaceAll("\\.git$", "");
+        urlPath = urlPath.replaceAll("/+$", ""); // trailing slashes
+        String[] parts = urlPath.split("/");
+        if (parts.length < 2) return null;
+        return new String[]{ parts[parts.length - 2], parts[parts.length - 1] };
+    }
+
     /**
      * [비동기 로직] GitHub Git Trees API 및 Commits API를 호출하여 데이터를 로드합니다.
      * 프론트엔드 응답을 블로킹하지 않고 백그라운드에서 실행됩니다.
@@ -302,13 +307,8 @@ public class SpaceService {
             String owner = parsed[0];
             String repo = parsed[1];
 
-            // 커밋 가져오기 로직 제거: AI 파이프라인에서 commit_history에 직접 적재함.
-            // git tree 조회를 위한 latestCommitSha는 DB에서 가장 최근 커밋 조회하여 사용
+            // TODO: git tree 조회를 위한 latestCommitSha 결정 로직 필요
             String latestCommitSha = "main"; // 기본값
-            List<CommitHistory> recentCommits = commitHistoryRepository.findByRepoNameOrderByCommitDateDesc(repo);
-            if (!recentCommits.isEmpty()) {
-                latestCommitSha = recentCommits.get(0).getCommitSha();
-            }
 
             // 2. 로직 A: GitHub Git Trees API 호출 및 파일 경로 목록 저장
             JsonNode treeResponse = githubFileFetchService.fetchGitTree(owner, repo, latestCommitSha);
@@ -348,108 +348,4 @@ public class SpaceService {
         }
     }
 
-    /**
-     * 특정 팀 코드의 커밋 내역을 반환합니다.
-     * DB에 해당 spaceId의 커밋이 없으면 spaces 테이블의 repo_url을 기반으로
-     * GitHub에서 자동 동기화한 뒤 반환합니다. (온디맨드 동기화)
-     */
-    @Transactional
-    public List<CommitHistory> getCommitsByTeamCode(String teamCode) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-
-        String repoUrl = space.getRepoUrl();
-        String[] parsed = parseGithubUrl(repoUrl);
-        if (parsed == null) {
-            log.error("잘못된 repo_url 형식: {}", repoUrl);
-            return java.util.Collections.emptyList();
-        }
-        String repoName = parsed[1];
-
-        // DB에서 repoName 기준으로 커밋 조회 (최신순)
-        return commitHistoryRepository.findByRepoNameOrderByCommitDateDesc(repoName);
-    }
-
-    /**
-     * 프론트엔드 동기화 요청 시 더 이상 GitHub API를 찌르지 않고 DB를 조회하여 반환.
-     * (AI 파이프라인 연동 트리거를 원한다면 별도 구현 필요)
-     */
-    @Transactional
-    public List<CommitHistory> syncCommitsByTeamCode(String teamCode) {
-        return getCommitsByTeamCode(teamCode);
-    }
-
-    // GitHub API에서 커밋을 긁어오던 syncCommitsFromGithub 메서드 제거
-
-    private String[] parseGithubUrl(String repoUrl) {
-        if (repoUrl == null || repoUrl.isBlank()) return null;
-        String urlPath = repoUrl.trim();
-        urlPath = urlPath.replaceAll("\\.git$", "");
-        urlPath = urlPath.replaceAll("/+$", ""); // trailing slashes
-        String[] parts = urlPath.split("/");
-        if (parts.length < 2) return null;
-        return new String[]{ parts[parts.length - 2], parts[parts.length - 1] };
-    }
-
-    // =====================================================================
-    // BoardTask CRUD
-    // =====================================================================
-
-    /**
-     * 특정 스페이스에 새 태스크를 생성합니다.
-     */
-    public BoardTask createTask(String teamCode, CreateBoardTaskRequestDto dto) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-
-        BoardTask task = BoardTask.builder()
-                .spaceId(space.getId())
-                .title(dto.getTitle())
-                .status(dto.getStatus() != null ? dto.getStatus() : BoardTaskStatus.TODO)
-                .assignee(dto.getAssignee())
-                .label(dto.getLabel())
-                .build();
-
-        return boardTaskRepository.save(task);
-    }
-
-    /**
-     * 특정 팀 코드의 모든 태스크를 조회합니다.
-     */
-    @Transactional(readOnly = true)
-    public List<BoardTask> getTasksByTeamCode(String teamCode) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-        return boardTaskRepository.findBySpaceId(space.getId());
-    }
-
-    /**
-     * 태스크 전체 필드를 수정합니다.
-     */
-    public BoardTask updateTask(Long taskId, CreateBoardTaskRequestDto dto) {
-        BoardTask task = boardTaskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
-        task.update(dto.getTitle(), dto.getStatus(), dto.getAssignee(), dto.getLabel());
-        return task; // dirty checking으로 자동 반영
-    }
-
-    /**
-     * 태스크 상태만 변경합니다. (체크박스 클릭 → IN_PROGRESS 이동 등)
-     */
-    public BoardTask updateTaskStatus(Long taskId, BoardTaskStatus newStatus) {
-        BoardTask task = boardTaskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
-        task.update(null, newStatus, null, null);
-        return task;
-    }
-
-    /**
-     * 태스크를 삭제합니다.
-     */
-    public void deleteTask(Long taskId) {
-        if (!boardTaskRepository.existsById(taskId)) {
-            throw new RuntimeException("Task not found: " + taskId);
-        }
-        boardTaskRepository.deleteById(taskId);
-    }
 }

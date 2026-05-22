@@ -1,6 +1,6 @@
-package com.vector.onboarding.domain.space.dto;
+package com.vector.onboarding.domain.flowview.dto;
 
-import com.vector.onboarding.domain.space.BoardTaskStatus;
+import com.vector.onboarding.domain.flowview.entity.BoardTaskStatus;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;

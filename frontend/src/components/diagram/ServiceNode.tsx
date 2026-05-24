@@ -3,10 +3,10 @@ import { Handle, Position, type NodeProps } from 'reactflow';
 import { Server, Code2, Database, Cloud, ChevronRight, ChevronDown } from 'lucide-react';
 
 const layerConfig: Record<string, { color: string; icon: any; bg: string }> = {
-  Controller: { color: 'border-blue-500', icon: Code2, bg: 'bg-blue-50 text-blue-600' },
-  Service: { color: 'border-purple-500', icon: Server, bg: 'bg-purple-50 text-purple-600' },
-  Repository: { color: 'border-green-500', icon: Database, bg: 'bg-green-50 text-green-600' },
-  External: { color: 'border-orange-500', icon: Cloud, bg: 'bg-orange-50 text-orange-600' },
+  Controller: { color: 'border-blue-200 bg-blue-50/50 hover:ring-blue-100', icon: Code2, bg: 'bg-blue-100 text-blue-600 shadow-sm border border-blue-200/50' },
+  Service: { color: 'border-purple-200 bg-purple-50/50 hover:ring-purple-100', icon: Server, bg: 'bg-purple-100 text-purple-600 shadow-sm border border-purple-200/50' },
+  Repository: { color: 'border-green-200 bg-green-50/50 hover:ring-green-100', icon: Database, bg: 'bg-green-100 text-green-600 shadow-sm border border-green-200/50' },
+  External: { color: 'border-orange-200 bg-orange-50/50 hover:ring-orange-100', icon: Cloud, bg: 'bg-orange-100 text-orange-600 shadow-sm border border-orange-200/50' },
 };
 
 export const ServiceNode = memo(({ id, data, isConnectable }: NodeProps) => {
@@ -16,9 +16,9 @@ export const ServiceNode = memo(({ id, data, isConnectable }: NodeProps) => {
 
   return (
     <div className={`
-      relative min-w-[220px] bg-white rounded-lg shadow-sm border border-gray-200 
-      border-l-4 ${config.color} 
-      transition-all duration-300 hover:shadow-md hover:-translate-y-0.5
+      relative min-w-[220px] rounded-[1.25rem] shadow-sm border backdrop-blur-sm
+      ${config.color} 
+      transition-all duration-300 hover:shadow-lg hover:ring-4 hover:-translate-y-1
     `}>
       <Handle type="target" position={Position.Left} isConnectable={isConnectable} className="w-2 h-2 !bg-gray-400" />
       

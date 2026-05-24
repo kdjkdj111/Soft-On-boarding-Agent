@@ -6,7 +6,7 @@ export const DomainNode = memo(({ id, data, isConnectable }: NodeProps) => {
   const { label, isExpanded, hasChildren, onToggle } = data;
 
   return (
-    <div className="relative min-w-[240px] bg-gray-900 text-white rounded-xl shadow-lg border border-gray-700 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+    <div className="relative min-w-[240px] bg-gray-900 text-white rounded-[1.25rem] shadow-xl shadow-gray-900/20 border border-gray-700/50 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 hover:border-gray-600">
       
       {/* Target Handle (Left) - Root nodes usually don't have targets, but safe to keep */}
       <Handle type="target" position={Position.Left} isConnectable={isConnectable} className="opacity-0" />

@@ -6,7 +6,7 @@ export const MethodNode = memo(({ data, isConnectable }: NodeProps) => {
   const { name, apiMethod } = data;
 
   return (
-    <div className="relative min-w-[180px] bg-gray-50 rounded-lg shadow-sm border border-gray-200 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
+    <div className="relative min-w-[180px] bg-gray-50/80 backdrop-blur-sm rounded-[1.25rem] shadow-sm border border-gray-200 transition-all duration-300 hover:shadow-lg hover:ring-4 hover:ring-blue-100 hover:border-blue-200 hover:-translate-y-1">
       <Handle type="target" position={Position.Left} isConnectable={isConnectable} className="w-2 h-2 !bg-gray-400" />
       
       <div className="py-2 px-3 flex items-center gap-2">
@@ -15,7 +15,7 @@ export const MethodNode = memo(({ data, isConnectable }: NodeProps) => {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Method</div>
-          <div className="text-xs font-semibold text-gray-700 truncate">{name || data.label}</div>
+          <div className="text-xs font-bold text-slate-800 font-mono truncate">{name || data.label}</div>
         </div>
         {apiMethod && (
           <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${

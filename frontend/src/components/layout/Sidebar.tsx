@@ -10,12 +10,14 @@ import {
   ChevronRight,
   LogOut,
   User,
-  Users
+  Users,
+  Home
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { userApi, type UserProfileResponse } from '../../services/userApi';
 
 const navigation = [
+  { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Functional', href: '/functional', icon: Blocks },
   { name: 'Data', href: '/data', icon: Database },
   { name: 'Interface', href: '/interface', icon: Layout },

@@ -5,6 +5,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { FunctionalView } from './pages/FunctionalView';
 import { DataView } from './pages/DataView';
 import { InterfaceView } from './pages/InterfaceView';
+import { DashboardView } from './pages/DashboardView';
 import { ProcessFlowView } from './pages/ProcessFlowView';
 import { QAView } from './pages/QAView';
 import { QAWrite } from './pages/QAWrite';
@@ -106,7 +107,8 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/functional" replace />} />
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardView />} />
           <Route path="functional" element={<FunctionalView />} />
           <Route path="data" element={<DataView />} />
           <Route path="interface" element={<InterfaceView />} />

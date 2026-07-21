@@ -8,7 +8,8 @@ import ReactFlow, {
   type Node,
   type Edge,
   useReactFlow,
-  ReactFlowProvider
+  ReactFlowProvider,
+  SelectionMode
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
@@ -179,7 +180,7 @@ function FunctionalViewContent() {
   const [nodeCommits, setNodeCommits] = useState<CommitSummary[]>([]);
   const [isCommitsLoading, setIsCommitsLoading] = useState(false);
 
-  const { fitView, getNodes } = useReactFlow();
+  const { fitView } = useReactFlow();
 
   // API Fetch
   useEffect(() => {
@@ -349,7 +350,7 @@ function FunctionalViewContent() {
         maxZoom={1.5}
         panOnDrag={!isSelectMode} // 모드에 따라 팬/선택 토글
         selectionOnDrag={isSelectMode}
-        selectionMode={isSelectMode ? 'partial' : 'full'}
+        selectionMode={isSelectMode ? SelectionMode.Partial : SelectionMode.Full}
         className="bg-gray-50/30"
       >
         <Background color="#cbd5e1" gap={20} size={1.5} />

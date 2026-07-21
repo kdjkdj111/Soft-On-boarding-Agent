@@ -26,9 +26,10 @@ export interface CreateSpaceResponse {
 
 // ---- Commit DTO ----
 export interface CommitHistoryDto {
-  id: string;         // commitSha
-  title: string;      // message
-  assignee: string;   // author
+  id: number;
+  commitSha: string;
+  message: string;
+  author: string;
   commitDate: string;
 }
 
@@ -64,6 +65,11 @@ export interface FunctionalViewEdgeDto {
 export interface FunctionalViewResponseDto {
   nodes: FunctionalViewNodeDto[];
   edges: FunctionalViewEdgeDto[];
+}
+
+export interface DashboardResponseDto {
+  tasks: BoardTaskDto[];
+  commits: CommitHistoryDto[];
 }
 
 export const spaceApi = {
@@ -207,6 +213,23 @@ export const spaceApi = {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || '태스크 삭제에 실패했습니다.');
     }
+  },
+
+  // ======================================================================
+  // Dashboard View (BFF)
+  // ======================================================================
+
+  getDashboardView: async (spaceId: number): Promise<DashboardResponseDto> => {
+    const response = await apiFetch(`/api/spaces/${spaceId}/dashboard`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || '대시보드 데이터를 불러오는데 실패했습니다.');
+    }
+
+    return response.json();
   },
 
   // ======================================================================

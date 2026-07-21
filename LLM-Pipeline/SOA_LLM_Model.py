@@ -1,20 +1,19 @@
 import os
 import sys
+import json
+import pika
+import requests
 from pathlib import Path
-# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
+from datetime import datetime, timezone
+from urllib.parse import urlparse
 
-# Load env variables at the very beginning
+# Load env variables
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Safe imports after env is loaded
-# pyrefly: ignore [missing-import]
-from supabase import create_client, Client
-from datetime import datetime, timezone
-from github_analyzer import analyze_single_repository, fetch_recent_commits, fetch_file_contents, fetch_file_contents_dict
+from github_analyzer import analyze_single_repository, fetch_file_contents, fetch_file_contents_dict
 from llm_engine import analyze_functional_view, analyze_interface_view, analyze_data_view, analyze_process_view
-from urllib.parse import urlparse
 
 
 def parse_repo_info(repo_url):
@@ -29,45 +28,42 @@ def parse_repo_info(repo_url):
     return None, None
 
 
-def main():
-    if len(sys.argv) < 3:
-        print("사용법: python SOA_LLM_Model.py <github_url> <space_id>")
-        return
+def send_webhook(endpoint, space_id, payload):
+    webhook_url = f"http://localhost:8080/api/internal/webhook/{endpoint}/{space_id}"
+    webhook_secret = os.getenv("WEBHOOK_SECRET", "my-secret-key-1234")
+    
+    headers = {
+        "Content-Type": "application/json",
+        "X-Internal-Secret": webhook_secret
+    }
+    
+    try:
+        response = requests.post(webhook_url, json=payload, headers=headers)
+        response.raise_for_status()
+        print(f"    [OK] Webhook 전송 성공 ({endpoint})")
+    except requests.exceptions.RequestException as e:
+        print(f"    [FAIL] Webhook 전송 실패 ({endpoint}): {e}")
 
-    TARGET_URL = sys.argv[1]
-    SPACE_ID = sys.argv[2]
-    USERNAME, REPO_NAME = parse_repo_info(TARGET_URL)
+
+def process_analysis(space_id, repo_url):
+    USERNAME, REPO_NAME = parse_repo_info(repo_url)
 
     if not USERNAME or not REPO_NAME:
         print("오류: 유효한 GitHub URL이 아닙니다.")
         return
 
-    print(f"Soft On-boarding Agent [DB 데이터 적재 파이프라인] 시작")
+    print(f"\nSoft On-boarding Agent [분석 파이프라인] 시작")
     print(f"  대상 레포지토리: {USERNAME}/{REPO_NAME}")
-    print(f"  대상 스페이스 ID: {SPACE_ID}\n")
+    print(f"  대상 스페이스 ID: {space_id}\n")
 
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-    if not GITHUB_TOKEN or not SUPABASE_URL or not SUPABASE_KEY:
-        print("오류: .env 파일 설정을 확인해주세요. (GITHUB_TOKEN, SUPABASE_URL, SUPABASE_KEY)")
+    if not GITHUB_TOKEN:
+        print("오류: .env 파일에 GITHUB_TOKEN 설정이 없습니다.")
         return
 
-    # -------------------------------------------
-    # Step 0: 테이블 자동 생성 (없으면 create)
-    # -------------------------------------------
-    print("[Step 0] 준비 완료. 데이터 적재를 시작합니다...")
-
-    # -------------------------------------------
-    # Supabase 클라이언트 초기화
-    # -------------------------------------------
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-    # -------------------------------------------
     # Step 1: 파일 분류
-    # -------------------------------------------
-    print(f"\n[로직 A] '{REPO_NAME}' 파일 분류 중...")
+    print(f"[로직 A] '{REPO_NAME}' 파일 분류 중...")
     categorized_files = analyze_single_repository(USERNAME, GITHUB_TOKEN, REPO_NAME)
 
     # ==========================================
@@ -79,82 +75,23 @@ def main():
         func_content_dict = fetch_file_contents_dict(USERNAME, GITHUB_TOKEN, REPO_NAME, func_files)
         if func_content_dict:
             func_data = analyze_functional_view(REPO_NAME, func_content_dict)
-
             if func_data and isinstance(func_data, list):
-                forest_nodes = [item for item in func_data if item.get("element_type") == "FOREST"]
-                tree_nodes   = [item for item in func_data if item.get("element_type") == "TREE"]
-                ring_nodes   = [item for item in func_data if item.get("element_type") == "RING"]
-
-                temp_to_actual_id = {}
-
-                # FOREST 삽입
-                if forest_nodes:
-                    payload = [
-                        {
-                            "space_id":     SPACE_ID,
-                            "repo_name":    REPO_NAME,
-                            "name":         f.get("name", "Unknown"),
-                            "element_type": "FOREST",
-                            "description":  f.get("description", ""),
-                            "created_at":   datetime.now(timezone.utc).isoformat()
-                        }
-                        for f in forest_nodes
-                    ]
-                    try:
-                        res = supabase.table("functional").insert(payload).execute()
-                        if res.data:
-                            for original, inserted in zip(forest_nodes, res.data):
-                                temp_to_actual_id[original.get("temp_id")] = inserted.get("id")
-                        print(f"    [OK] Functional FOREST {len(payload)}건 적재 완료")
-                    except Exception as e:
-                        print(f"    [FAIL] Functional FOREST 적재 실패: {e}")
-
-                # TREE 삽입
-                if tree_nodes:
-                    payload = [
-                        {
-                            "space_id":     SPACE_ID,
-                            "repo_name":    REPO_NAME,
-                            "parent_id":    temp_to_actual_id.get(t.get("parent_temp_id")),
-                            "name":         t.get("name", "Unknown"),
-                            "element_type": "TREE",
-                            "description":  t.get("description", ""),
-                            "file_path":    t.get("file_path", ""),
-                            "created_at":   datetime.now(timezone.utc).isoformat()
-                        }
-                        for t in tree_nodes
-                    ]
-                    try:
-                        res = supabase.table("functional").insert(payload).execute()
-                        if res.data:
-                            for original, inserted in zip(tree_nodes, res.data):
-                                temp_to_actual_id[original.get("temp_id")] = inserted.get("id")
-                        print(f"    [OK] Functional TREE {len(payload)}건 적재 완료")
-                    except Exception as e:
-                        print(f"    [FAIL] Functional TREE 적재 실패: {e}")
-
-                # RING 삽입
-                if ring_nodes:
-                    payload = [
-                        {
-                            "space_id":     SPACE_ID,
-                            "repo_name":    REPO_NAME,
-                            "parent_id":    temp_to_actual_id.get(r.get("parent_temp_id")),
-                            "name":         r.get("name", "Unknown"),
-                            "element_type": "RING",
-                            "description":  r.get("description", ""),
-                            "file_path":    r.get("file_path", ""),
-                            "api_method":   r.get("api_method"),
-                            "api_url":      r.get("api_url"),
-                            "created_at":   datetime.now(timezone.utc).isoformat()
-                        }
-                        for r in ring_nodes
-                    ]
-                    try:
-                        supabase.table("functional").insert(payload).execute()
-                        print(f"    [OK] Functional RING {len(payload)}건 적재 완료")
-                    except Exception as e:
-                        print(f"    [FAIL] Functional RING 적재 실패: {e}")
+                payload = []
+                for item in func_data:
+                    # Webhook Controller expects FunctionalElementSaveRequestDto format
+                    # Spring Boot Admin Service builds from this DTO
+                    payload.append({
+                        "name": item.get("name"),
+                        "element_type": item.get("element_type"),
+                        "description": item.get("description"),
+                        "file_path": item.get("file_path", ""),
+                        "repo_name": REPO_NAME,
+                        "temp_id": item.get("temp_id"),
+                        "parent_temp_id": item.get("parent_temp_id"),
+                        "api_method": item.get("api_method"),
+                        "api_url": item.get("api_url")
+                    })
+                send_webhook("functional", space_id, payload)
             else:
                 print("    [WARN] Functional View 데이터가 없거나 형식이 올바르지 않습니다.")
         else:
@@ -171,16 +108,12 @@ def main():
         iface_content = fetch_file_contents(USERNAME, GITHUB_TOKEN, REPO_NAME, iface_files)
         if iface_content:
             iface_data = analyze_interface_view(REPO_NAME, iface_content)
-
             if iface_data and isinstance(iface_data, list):
                 for item in iface_data:
-                    item["space_id"] = SPACE_ID
+                    item["space_id"] = space_id
+                    item["repo_name"] = REPO_NAME
                     item.setdefault("created_at", datetime.now(timezone.utc).isoformat())
-                try:
-                    supabase.table("interface").insert(iface_data).execute()
-                    print(f"    [OK] Interface View {len(iface_data)}건 적재 완료")
-                except Exception as e:
-                    print(f"    [FAIL] Interface View 적재 실패: {e}")
+                send_webhook("interface", space_id, iface_data)
             else:
                 print("    [WARN] Interface View 데이터가 없거나 형식이 올바르지 않습니다.")
         else:
@@ -197,12 +130,10 @@ def main():
         schema_data = analyze_data_view(REPO_NAME, data_files)
         if schema_data and isinstance(schema_data, list):
             for item in schema_data:
-                item["space_id"] = SPACE_ID
-            try:
-                supabase.table("data").insert(schema_data).execute()
-                print(f"    [OK] Data View {len(schema_data)}건 적재 완료")
-            except Exception as e:
-                print(f"    [FAIL] Data View 적재 실패: {e}")
+                item["space_id"] = space_id
+                item["repo_name"] = REPO_NAME
+                item.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+            send_webhook("data", space_id, schema_data)
         else:
             print("    [WARN] Data View 데이터가 없거나 형식이 올바르지 않습니다.")
     else:
@@ -217,16 +148,12 @@ def main():
         proc_content = fetch_file_contents(USERNAME, GITHUB_TOKEN, REPO_NAME, proc_files)
         if proc_content:
             proc_data = analyze_process_view(REPO_NAME, proc_content)
-
             if proc_data and isinstance(proc_data, list):
                 for item in proc_data:
-                    item["space_id"] = SPACE_ID
+                    item["space_id"] = space_id
+                    item["repo_name"] = REPO_NAME
                     item.setdefault("created_at", datetime.now(timezone.utc).isoformat())
-                try:
-                    supabase.table("process").insert(proc_data).execute()
-                    print(f"    [OK] Process View {len(proc_data)}건 적재 완료")
-                except Exception as e:
-                    print(f"    [FAIL] Process View 적재 실패: {e}")
+                send_webhook("process", space_id, proc_data)
             else:
                 print("    [WARN] Process View 데이터가 없거나 형식이 올바르지 않습니다.")
         else:
@@ -234,52 +161,68 @@ def main():
     else:
         print("    [WARN] Process View 대상 파일이 없습니다.")
 
-    # ==========================================
-    # 로직 B: CommitHistory
-    # ==========================================
-    print(f"\n[로직 B] '{REPO_NAME}' 커밋 분석 중...")
-    recent_commits = fetch_recent_commits(USERNAME, GITHUB_TOKEN, REPO_NAME, limit=100)
+    print("\n[완료] 파이프라인 처리가 성공적으로 종료되었습니다.")
 
-    commits_data = []
-    if recent_commits:
-        for commit_data in recent_commits:
-            sha  = commit_data.get('sha', '')[:7]
-            info = commit_data.get('commit', {})
-            msg  = info.get('message', '').split('\n')[0]
-            date = info.get('author', {}).get('date', '')[:10]
-            commits_data.append({
-                "space_id":    SPACE_ID,
-                "repo_name":   REPO_NAME,
-                "commit_sha":  sha,
-                "message":     msg,
-                "commit_date": date,
-                "author":      info.get('author', {}).get('name', 'Unknown')
-            })
 
-    if commits_data:
-        try:
-            for i in range(0, len(commits_data), 100):
-                chunk = commits_data[i:i + 100]
-                supabase.table("commit_history").insert(chunk).execute()
-            print(f"  [OK] CommitHistory {len(commits_data)}건 적재 완료")
-        except Exception as e:
-            print(f"  [FAIL] CommitHistory 적재 실패: {e}")
+def on_message(ch, method, properties, body):
+    """RabbitMQ 메시지 수신 시 호출되는 콜백"""
+    message_str = body.decode('utf-8')
+    print(f"[*] Received message: {message_str}")
+    
+    try:
+        data = json.loads(message_str)
+        space_id = data.get("space_id")
+        repo_url = data.get("repo_url")
+        action = data.get("action")
+        
+        if action == "analyze" and space_id and repo_url:
+            process_analysis(space_id, repo_url)
+        else:
+            print("[!] Invalid message format or missing required fields.")
+            
+    except json.JSONDecodeError:
+        print("[!] Failed to decode JSON message.")
+    except Exception as e:
+        print(f"[!] Error processing message: {e}")
+    finally:
+        # 메시지 처리 완료 ACK 전송
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        print("[*] Message processing complete.\n")
 
-    # ==========================================
-    # 최종 검증
-    # ==========================================
-    print("\n[데이터 검증] Supabase 적재 결과 확인...")
-    check_tables = ["functional", "interface", "data", "process", "commit_history"]
-    for table_name in check_tables:
-        try:
-            response = supabase.table(table_name).select("*", count="exact").limit(1).execute()
-            count = response.count if response.count is not None else 0
-            print(f"  {table_name}: {count}건")
-        except Exception as e:
-            print(f"  {table_name}: 조회 실패 - {e}")
 
-    print("\n완료!")
+def start_consumer():
+    rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
+    rabbitmq_port = int(os.getenv("RABBITMQ_PORT", "5672"))
+    rabbitmq_user = os.getenv("RABBITMQ_USER", "guest")
+    rabbitmq_pass = os.getenv("RABBITMQ_PASS", "guest")
+    
+    queue_name = "analysis.queue"
+    
+    credentials = pika.PlainCredentials(rabbitmq_user, rabbitmq_pass)
+    parameters = pika.ConnectionParameters(
+        host=rabbitmq_host, 
+        port=rabbitmq_port, 
+        credentials=credentials,
+        heartbeat=600,
+        blocked_connection_timeout=300
+    )
+    
+    try:
+        connection = pika.BlockingConnection(parameters)
+        channel = connection.channel()
+        
+        # 큐 생성 (이미 존재하면 무시됨)
+        channel.queue_declare(queue=queue_name, durable=True)
+        
+        # 공평한 분배를 위해 prefetch_count 1 설정
+        channel.basic_qos(prefetch_count=1)
+        channel.basic_consume(queue=queue_name, on_message_callback=on_message)
+        
+        print(f"[*] Waiting for messages in '{queue_name}'. To exit press CTRL+C")
+        channel.start_consuming()
+    except Exception as e:
+        print(f"Failed to connect to RabbitMQ: {e}")
 
 
 if __name__ == "__main__":
-    main()
+    start_consumer()

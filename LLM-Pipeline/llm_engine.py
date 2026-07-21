@@ -15,8 +15,6 @@ if env_path.exists():
 from google import genai
 # pyrefly: ignore [missing-import]
 from google.genai import types
-# pyrefly: ignore [missing-import]
-from supabase import create_client, Client as SupabaseClient
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -319,18 +317,6 @@ def analyze_interface_view(repo_name, files_content_str):
 # Interface Analysis Pipeline (interface_analyzer.py 통합)
 # ============================================================
 
-def _get_supabase_client() -> SupabaseClient:
-    """
-    환경 변수에서 Supabase URL과 KEY를 가져와 클라이언트를 초기화합니다.
-    """
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY")
-    
-    if not supabase_url or not supabase_key:
-        raise ValueError("치명적 오류: Supabase 환경 변수(SUPABASE_URL, SUPABASE_KEY)가 설정되지 않았습니다.")
-        
-    return create_client(supabase_url, supabase_key)
-
 def extract_component_metadata(project_path: str) -> list:
     """
     프로젝트 경로 내의 .tsx, .jsx, .vue 파일들을 스캔하여
@@ -460,56 +446,7 @@ def format_interface_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"데이터 포맷팅 중 오류 발생: {str(e)}")
         raise
 
-def save_interface_to_supabase(space_id: int, interface_data: Dict[str, Any]):
-    """
-    가공 완료된 JSON 데이터를 Supabase 'analysis_results' 테이블에 저장(Upsert)합니다.
-    """
-    logger.info(f"Supabase DB 저장 시작 (space_id: {space_id})")
-    
-    try:
-        supabase = _get_supabase_client()
-        
-        data = {
-            "space_id": space_id,
-            "interface_view_data": interface_data
-        }
-        
-        response = supabase.table("analysis_results").upsert(data).execute()
-        
-        if hasattr(response, 'error') and response.error:
-             raise Exception(response.error)
-             
-        logger.info(f"Supabase 저장 성공. 완료된 데이터 수: {len(response.data) if response.data else 0}")
-        return response
-    except Exception as e:
-        logger.error(f"Supabase 저장 중 예외 발생: {str(e)}")
-        raise
 
-def run_interface_analysis_pipeline(space_id: int, project_path: str):
-    """
-    전체 Interface 분석 파이프라인을 실행하는 오케스트레이션(메인) 함수.
-    1. 프로젝트 파일 분석 및 추출
-    2. 추출된 데이터 정형화
-    3. 데이터베이스 저장
-    """
-    try:
-        logger.info(f"--- Interface 분석 파이프라인 시작 (Space ID: {space_id}) ---")
-        
-        # 1. 프로젝트 파일 분석 및 추출
-        raw_data = analyze_project_ui(project_path)
-        
-        # 2. 추출된 데이터 정형화
-        formatted_json = format_interface_data(raw_data)
-        
-        # 3. 데이터베이스 저장
-        save_interface_to_supabase(space_id, formatted_json)
-        
-        logger.info("--- Interface 분석 파이프라인 완료 ---")
-        return formatted_json
-        
-    except Exception as e:
-        logger.error(f"파이프라인 실행 중 치명적 오류 발생: {str(e)}")
-        raise
 
 def analyze_data_view(repo_name: str, file_paths: list) -> list:
     """

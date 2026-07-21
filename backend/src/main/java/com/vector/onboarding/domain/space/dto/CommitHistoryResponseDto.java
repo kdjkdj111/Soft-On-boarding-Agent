@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import com.vector.onboarding.domain.processflow.entity.CommitHistory;
+import com.vector.onboarding.domain.commit.entity.CommitHistory;
 
 @Data
 @Builder

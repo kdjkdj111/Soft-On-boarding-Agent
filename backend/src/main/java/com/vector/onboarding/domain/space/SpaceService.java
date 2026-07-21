@@ -1,8 +1,13 @@
 package com.vector.onboarding.domain.space;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.vector.onboarding.domain.commit.entity.CommitHistory;
+import com.vector.onboarding.domain.commit.repository.CommitHistoryRepository;
+import com.vector.onboarding.domain.dataview.entity.GithubFileInfo;
+import com.vector.onboarding.domain.dataview.repository.GithubFileRepository;
+import com.vector.onboarding.domain.dataview.service.GithubFileFetchService;
 import com.vector.onboarding.domain.space.dto.CreateSpaceRequestDto;
 import com.vector.onboarding.domain.space.dto.CreateSpaceResponseDto;
-import com.vector.onboarding.domain.space.dto.CreateBoardTaskRequestDto;
 import com.vector.onboarding.domain.space.dto.MemberResponseDto;
 import com.vector.onboarding.domain.user.User;
 import com.vector.onboarding.domain.user.UserRepository;
@@ -10,12 +15,6 @@ import com.vector.onboarding.global.exception.AccessDeniedException;
 import com.vector.onboarding.global.exception.SpaceNotFoundException;
 import com.vector.onboarding.global.exception.UserNotFoundException;
 import com.vector.onboarding.infrastructure.github.GithubAnalysisService;
-import com.vector.onboarding.domain.dataview.repository.GithubFileRepository;
-import com.vector.onboarding.domain.processflow.repository.CommitHistoryRepository;
-import com.vector.onboarding.domain.dataview.entity.GithubFileInfo;
-import com.vector.onboarding.domain.processflow.entity.CommitHistory;
-import com.vector.onboarding.domain.dataview.service.GithubFileFetchService;
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -24,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +41,6 @@ public class SpaceService {
     private final GithubFileFetchService githubFileFetchService;
     private final GithubFileRepository githubFileRepository;
     private final CommitHistoryRepository commitHistoryRepository;
-    private final BoardTaskRepository boardTaskRepository;
 
     private static final int TEAM_CODE_LENGTH = 8;
     private static final String TEAM_CODE_CHARS =
@@ -52,8 +49,6 @@ public class SpaceService {
 
     /**
      * 팀 스페이스를 생성합니다.
-     * 생성자는 자동으로 ADMIN 역할의 SpaceMember로 등록됩니다.
-     * GitHub 분석은 동기적으로 실행되며, 완전히 끝날 때까지 대기합니다.
      */
     public CreateSpaceResponseDto createSpace(Long userId, CreateSpaceRequestDto dto) {
         User user = userRepository.findById(userId)
@@ -69,7 +64,6 @@ public class SpaceService {
                 .build();
         Space savedSpace = spaceRepository.save(space);
 
-        // 생성자를 ADMIN으로 SpaceMember에 등록
         SpaceMember adminMember = SpaceMember.builder()
                 .spaceId(savedSpace.getId())
                 .userId(userId)
@@ -78,11 +72,9 @@ public class SpaceService {
                 .build();
         spaceMemberRepository.save(adminMember);
 
-        // User의 소속 teamCode 업데이트
         user.updateTeamCode(teamCode);
         userRepository.save(user);
 
-        // [팀원 연동부] GitHub 레포지토리 분석 - 동기 실행 (파이프라인 완료 대기)
         githubAnalysisService.analyzeAndSaveProjectStructure(savedSpace.getId(), dto.getRepoUrl());
         log.info("Space 생성 완료 및 AI 파이프라인 분석 완료. spaceId={}, teamCode={}", savedSpace.getId(), teamCode);
 
@@ -91,7 +83,6 @@ public class SpaceService {
 
     /**
      * teamCode를 통해 팀 스페이스에 참여합니다.
-     * 존재하지 않는 코드일 경우 {@link SpaceNotFoundException}을 던집니다.
      */
     public void joinSpace(Long userId, String teamCode, String jobRole) {
         Space space = spaceRepository.findByTeamCode(teamCode)
@@ -104,7 +95,6 @@ public class SpaceService {
             throw new IllegalArgumentException("이미 참여한 팀 스페이스입니다.");
         }
 
-        // MEMBER 역할로 SpaceMember 등록
         SpaceMember member = SpaceMember.builder()
                 .spaceId(space.getId())
                 .userId(userId)
@@ -113,7 +103,6 @@ public class SpaceService {
                 .build();
         spaceMemberRepository.save(member);
 
-        // User의 소속 teamCode 업데이트
         user.updateTeamCode(teamCode);
         userRepository.save(user);
 
@@ -139,13 +128,11 @@ public class SpaceService {
                 .orElseThrow(() -> new RuntimeException("SpaceMember mapping not found"));
 
         if (currentMember.getMemberRole() == SpaceMemberRole.ADMIN) {
-            java.util.List<SpaceMember> members = spaceMemberRepository.findAllBySpaceId(space.getId());
+            List<SpaceMember> members = spaceMemberRepository.findAllBySpaceId(space.getId());
             if (members.size() == 1) {
-                // 혼자라면 팀 해체
                 spaceMemberRepository.delete(currentMember);
                 spaceRepository.delete(space);
             } else {
-                // 다른 팀원이 있다면 가장 먼저 가입한 멤버에게 ADMIN 위임
                 SpaceMember nextAdmin = members.stream()
                         .filter(m -> !m.getUserId().equals(userId))
                         .min(java.util.Comparator.comparing(SpaceMember::getJoinedAt))
@@ -156,26 +143,21 @@ public class SpaceService {
                 spaceMemberRepository.delete(currentMember);
             }
         } else {
-            // 일반 멤버는 즉시 탈퇴
             spaceMemberRepository.delete(currentMember);
         }
 
         user.updateTeamCode(null);
-        // userRepository.save(user) is not strictly necessary due to dirty checking but safe.
     }
 
     /**
      * 특정 스페이스의 전체 팀원 목록을 조회합니다.
-     * 요청자가 해당 스페이스 멤버인지 먼저 검증합니다.
      */
     @Transactional(readOnly = true)
     public List<MemberResponseDto> getMembers(Long requestUserId, Long spaceId) {
         checkSpaceMembership(requestUserId, spaceId);
 
-        // SpaceMember 목록 조회 (쿼리 1회)
         List<SpaceMember> members = spaceMemberRepository.findAllBySpaceId(spaceId);
 
-        // userId 목록 추출 → User 한 번에 IN 쿼리 (쿼리 1회, N+1 방지)
         List<Long> userIds = members.stream()
                 .map(SpaceMember::getUserId)
                 .collect(Collectors.toList());
@@ -198,7 +180,6 @@ public class SpaceService {
 
     /**
      * 대상 유저에게 ADMIN 권한을 부여합니다.
-     * 요청자가 ADMIN인지 먼저 검증합니다.
      */
     public void assignAdmin(Long requestUserId, Long spaceId, Long targetUserId) {
         checkAdminPermission(requestUserId, spaceId);
@@ -206,14 +187,12 @@ public class SpaceService {
         SpaceMember targetMember = spaceMemberRepository.findBySpaceIdAndUserId(spaceId, targetUserId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 유저는 이 스페이스의 멤버가 아닙니다."));
 
-        targetMember.changeRole(SpaceMemberRole.ADMIN); // 변경 감지(dirty checking)
+        targetMember.changeRole(SpaceMemberRole.ADMIN);
         log.info("ADMIN 권한 부여. requestUserId={}, targetUserId={}, spaceId={}", requestUserId, targetUserId, spaceId);
     }
 
     /**
      * 대상 유저를 팀에서 추방합니다.
-     * - 본인 추방 불가
-     * - 마지막 ADMIN 추방 불가
      */
     public void kickMember(Long requestUserId, Long spaceId, Long targetUserId) {
         checkAdminPermission(requestUserId, spaceId);
@@ -225,7 +204,6 @@ public class SpaceService {
         SpaceMember targetMember = spaceMemberRepository.findBySpaceIdAndUserId(spaceId, targetUserId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 유저는 이 스페이스의 멤버가 아닙니다."));
 
-        // 마지막 ADMIN 추방 방지
         if (targetMember.getMemberRole() == SpaceMemberRole.ADMIN) {
             List<SpaceMember> admins = spaceMemberRepository.findAllBySpaceIdAndMemberRole(spaceId, SpaceMemberRole.ADMIN);
             if (admins.size() <= 1) {
@@ -233,7 +211,6 @@ public class SpaceService {
             }
         }
 
-        // SpaceMember 삭제 + User teamCode 초기화
         User targetUser = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new UserNotFoundException("User not found: " + targetUserId));
         spaceMemberRepository.delete(targetMember);
@@ -242,11 +219,8 @@ public class SpaceService {
         log.info("팀원 추방 완료. requestUserId={}, targetUserId={}, spaceId={}", requestUserId, targetUserId, spaceId);
     }
 
-    // ─── 권한 검증 헬퍼 ───────────────────────────────────────────────
-
     /**
-     * 요청자가 해당 스페이스의 멤버인지 검증합니다. (일반 접근 권한)
-     * 멤버가 아니면 403 AccessDeniedException.
+     * 요청자가 해당 스페이스의 멤버인지 검증합니다.
      */
     public void checkSpaceMembership(Long userId, Long spaceId) {
         if (!spaceMemberRepository.existsBySpaceIdAndUserId(spaceId, userId)) {
@@ -255,8 +229,7 @@ public class SpaceService {
     }
 
     /**
-     * 요청자가 해당 스페이스의 ADMIN인지 검증합니다. (관리자 전용 기능)
-     * ADMIN이 아니면 403 AccessDeniedException.
+     * 요청자가 해당 스페이스의 ADMIN인지 검증합니다.
      */
     private void checkAdminPermission(Long userId, Long spaceId) {
         SpaceMember member = spaceMemberRepository.findBySpaceIdAndUserId(spaceId, userId)
@@ -265,8 +238,6 @@ public class SpaceService {
             throw new AccessDeniedException("해당 스페이스에 대한 관리자 권한이 없습니다.");
         }
     }
-
-    // ─── 팀 코드 생성 유틸 ───────────────────────────────────────────
 
     String generateUniqueTeamCode() {
         String code;
@@ -286,16 +257,11 @@ public class SpaceService {
 
     /**
      * [비동기 로직] GitHub Git Trees API 및 Commits API를 호출하여 데이터를 로드합니다.
-     * 프론트엔드 응답을 블로킹하지 않고 백그라운드에서 실행됩니다.
-     * 
-     * @param spaceId 스페이스 ID
-     * @param repoUrl GitHub 레포지토리 URL
      */
     @Async
     public void loadGithubCommitsAsync(Long spaceId, String repoUrl) {
         log.info("비동기 데이터 로드 시작 - SpaceID: {}, Repo: {}", spaceId, repoUrl);
         try {
-            // URL 파싱 (예: https://github.com/vector/onboarding -> owner: vector, repo: onboarding)
             String urlPath = repoUrl.replace("https://github.com/", "").replace(".git", "");
             String[] parts = urlPath.split("/");
             if (parts.length < 2) {
@@ -305,9 +271,8 @@ public class SpaceService {
             String owner = parts[0];
             String repo = parts[1];
 
-            // 1. 로직 B: GitHub Commits API 호출 (최근 100개 커밋 내역 저장)
             JsonNode commits = githubFileFetchService.fetchCommits(owner, repo);
-            String latestCommitSha = "main"; // 기본값
+            String latestCommitSha = "main";
             
             if (commits != null && commits.isArray() && commits.size() > 0) {
                 latestCommitSha = commits.get(0).get("sha").asText();
@@ -320,7 +285,7 @@ public class SpaceService {
                     String dateStr = commitNode.get("commit").get("author").get("date").asText();
                     
                     CommitHistory history = CommitHistory.builder()
-                            .spaceId(spaceId)   // 팀 격리 키
+                            .spaceId(spaceId)
                             .repoName(repo)
                             .commitSha(sha)
                             .message(message)
@@ -330,12 +295,10 @@ public class SpaceService {
                             
                     commitHistories.add(history);
                 }
-                // 일괄 저장
                 commitHistoryRepository.saveAll(commitHistories);
                 log.info("최근 100개의 커밋 내역 저장 완료");
             }
 
-            // 2. 로직 A: GitHub Git Trees API 호출 및 파일 경로 목록 저장
             JsonNode treeResponse = githubFileFetchService.fetchGitTree(owner, repo, latestCommitSha);
             if (treeResponse != null && treeResponse.has("tree")) {
                 JsonNode treeArray = treeResponse.get("tree");
@@ -357,178 +320,13 @@ public class SpaceService {
                         fileInfos.add(fileInfo);
                     }
                 }
-                // 일괄 저장
                 githubFileRepository.saveAll(fileInfos);
                 log.info("파일 경로 목록 저장 완료. 총 {}개 파일", fileInfos.size());
             }
-
-            // TODO: LLM 분류 로직 뼈대 (SchemaAnalysisResult 활용)
-            // SchemaAnalysisResult result = SchemaAnalysisResult.builder()...
-            // schemaAnalysisResultRepository.save(result);
-            
             log.info("비동기 데이터 로드 완료 - SpaceID: {}", spaceId);
 
         } catch (Exception e) {
             log.error("비동기 데이터 로드 중 오류 발생: {}", e.getMessage(), e);
         }
-    }
-
-    /**
-     * 특정 팀 코드의 커밋 내역을 반환합니다.
-     * DB에 해당 spaceId의 커밋이 없으면 spaces 테이블의 repo_url을 기반으로
-     * GitHub에서 자동 동기화한 뒤 반환합니다. (온디맨드 동기화)
-     */
-    @Transactional
-    public List<CommitHistory> getCommitsByTeamCode(String teamCode) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-
-        List<CommitHistory> existing = commitHistoryRepository.findBySpaceIdOrderByIdDesc(space.getId());
-
-        // DB에 커밋이 없으면 → repo_url 기반으로 온디맨드 동기화
-        if (existing.isEmpty() && space.getRepoUrl() != null && !space.getRepoUrl().isBlank()) {
-            log.info("[온디맨드 동기화] spaceId={} 커밋 없음. repo_url={} 에서 fetch 시도",
-                    space.getId(), space.getRepoUrl());
-            existing = syncCommitsFromGithub(space);
-        }
-
-        return existing;
-    }
-
-    /**
-     * 특정 팀 코드의 커밋을 GitHub에서 강제 재동기화합니다.
-     * 기존 커밋은 삭제 후 최신 데이터로 교체합니다.
-     * POST /api/spaces/{teamCode}/commits/sync 에서 호출됩니다.
-     */
-    @Transactional
-    public List<CommitHistory> syncCommitsByTeamCode(String teamCode) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-
-        if (space.getRepoUrl() == null || space.getRepoUrl().isBlank()) {
-            log.warn("[재동기화] spaceId={} 에 repo_url 없음. 건너뜁니다.", space.getId());
-            return java.util.Collections.emptyList();
-        }
-
-        // 기존 커밋 삭제 (덮어쓰기)
-        List<CommitHistory> old = commitHistoryRepository.findBySpaceIdOrderByIdDesc(space.getId());
-        if (!old.isEmpty()) {
-            commitHistoryRepository.deleteAll(old);
-            log.info("[재동기화] 기존 커밋 {}건 삭제", old.size());
-        }
-
-        return syncCommitsFromGithub(space);
-    }
-
-    /**
-     * 내부 공통 메서드: Space 엔티티를 받아 GitHub에서 커밋을 fetch하고 저장 후 반환합니다.
-     */
-    private List<CommitHistory> syncCommitsFromGithub(Space space) {
-        String repoUrl = space.getRepoUrl();
-        String urlPath = repoUrl.replace("https://github.com/", "").replace(".git", "");
-        String[] parts = urlPath.split("/");
-        if (parts.length < 2) {
-            log.error("잘못된 repo_url 형식: {}", repoUrl);
-            return java.util.Collections.emptyList();
-        }
-        String owner = parts[0];
-        String repo  = parts[1];
-
-        try {
-            com.fasterxml.jackson.databind.JsonNode commits =
-                    githubFileFetchService.fetchCommits(owner, repo);
-
-            if (commits == null || !commits.isArray() || commits.size() == 0) {
-                log.info("[동기화] GitHub 커밋 없음 - owner={}, repo={}", owner, repo);
-                return java.util.Collections.emptyList();
-            }
-
-            List<CommitHistory> histories = new ArrayList<>();
-            for (com.fasterxml.jackson.databind.JsonNode node : commits) {
-                String sha     = node.get("sha").asText();
-                String message = node.get("commit").get("message").asText();
-                String author  = node.get("commit").get("author").get("name").asText();
-                String date    = node.get("commit").get("author").get("date").asText();
-
-                histories.add(CommitHistory.builder()
-                        .spaceId(space.getId())
-                        .repoName(repo)
-                        .commitSha(sha)
-                        .message(message)
-                        .commitDate(date)
-                        .author(author)
-                        .build());
-            }
-
-            List<CommitHistory> saved = commitHistoryRepository.saveAll(histories);
-            log.info("[동기화] {}건 저장 완료 - spaceId={}", saved.size(), space.getId());
-            return commitHistoryRepository.findBySpaceIdOrderByIdDesc(space.getId());
-
-        } catch (Exception e) {
-            log.error("[동기화] GitHub fetch 실패: {}", e.getMessage(), e);
-            return java.util.Collections.emptyList();
-        }
-    }
-
-    // =====================================================================
-    // BoardTask CRUD
-    // =====================================================================
-
-    /**
-     * 특정 스페이스에 새 태스크를 생성합니다.
-     */
-    public BoardTask createTask(String teamCode, CreateBoardTaskRequestDto dto) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-
-        BoardTask task = BoardTask.builder()
-                .spaceId(space.getId())
-                .title(dto.getTitle())
-                .status(dto.getStatus() != null ? dto.getStatus() : BoardTaskStatus.TODO)
-                .assignee(dto.getAssignee())
-                .label(dto.getLabel())
-                .build();
-
-        return boardTaskRepository.save(task);
-    }
-
-    /**
-     * 특정 팀 코드의 모든 태스크를 조회합니다.
-     */
-    @Transactional(readOnly = true)
-    public List<BoardTask> getTasksByTeamCode(String teamCode) {
-        Space space = spaceRepository.findByTeamCode(teamCode)
-                .orElseThrow(() -> new SpaceNotFoundException(teamCode));
-        return boardTaskRepository.findBySpaceId(space.getId());
-    }
-
-    /**
-     * 태스크 전체 필드를 수정합니다.
-     */
-    public BoardTask updateTask(Long taskId, CreateBoardTaskRequestDto dto) {
-        BoardTask task = boardTaskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
-        task.update(dto.getTitle(), dto.getStatus(), dto.getAssignee(), dto.getLabel());
-        return task; // dirty checking으로 자동 반영
-    }
-
-    /**
-     * 태스크 상태만 변경합니다. (체크박스 클릭 → IN_PROGRESS 이동 등)
-     */
-    public BoardTask updateTaskStatus(Long taskId, BoardTaskStatus newStatus) {
-        BoardTask task = boardTaskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
-        task.update(null, newStatus, null, null);
-        return task;
-    }
-
-    /**
-     * 태스크를 삭제합니다.
-     */
-    public void deleteTask(Long taskId) {
-        if (!boardTaskRepository.existsById(taskId)) {
-            throw new RuntimeException("Task not found: " + taskId);
-        }
-        boardTaskRepository.deleteById(taskId);
     }
 }

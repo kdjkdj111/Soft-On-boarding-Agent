@@ -1,7 +1,7 @@
-package com.vector.onboarding.domain.space.dto;
+package com.vector.onboarding.domain.boardtask.dto;
 
-import com.vector.onboarding.domain.space.BoardTask;
-import com.vector.onboarding.domain.space.BoardTaskStatus;
+import com.vector.onboarding.domain.boardtask.entity.BoardTask;
+import com.vector.onboarding.domain.boardtask.entity.BoardTaskStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,3 +34,4 @@ public class BoardTaskResponseDto {
                 .build();
     }
 }
+

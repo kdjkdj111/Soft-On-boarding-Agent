@@ -1,6 +1,6 @@
-package com.vector.onboarding.domain.space.dto;
+package com.vector.onboarding.domain.boardtask.dto;
 
-import com.vector.onboarding.domain.space.BoardTaskStatus;
+import com.vector.onboarding.domain.boardtask.entity.BoardTaskStatus;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -18,3 +18,4 @@ public class UpdateTaskStatusRequestDto {
     @NotNull(message = "status는 필수입니다.")
     private BoardTaskStatus status;
 }
+

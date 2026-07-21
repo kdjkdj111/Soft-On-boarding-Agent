@@ -1,4 +1,4 @@
-package com.vector.onboarding.domain.space;
+package com.vector.onboarding.domain.boardtask.entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -55,3 +55,4 @@ public class BoardTask {
         if (label != null) this.label = label;
     }
 }
+

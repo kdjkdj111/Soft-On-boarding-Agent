@@ -1,4 +1,4 @@
-package com.vector.onboarding.domain.processflow.entity;
+package com.vector.onboarding.domain.commit.entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
